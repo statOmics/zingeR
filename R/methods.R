@@ -291,43 +291,66 @@
 #' @name zeroWeights
 #' @rdname zeroWeights
 #' @export
-zeroWeights <- function(counts, design, maxit=30, plot=FALSE, plotW=FALSE, designZI=NULL){
-  #zeroWeightsLibSize <- function(counts, design, maxit=30, plot=FALSE, plotW=FALSE, designZI=NULL){
-  require(edgeR)
-  if(plot | plotW) par(mfrow=c(1,plot+plotW))
-  counts <- DGEList(counts)
-  counts <- edgeR::calcNormFactors(counts)
-  effLibSize <- counts$samples$lib.size*counts$samples$norm.factors
-  logEffLibSize <- log(effLibSize)
-  zeroId <- counts$counts==0
-  w <- matrix(1,nrow=nrow(counts),ncol=ncol(counts))
-  for(k in 1:ncol(w)) w[counts$counts[,k]==0,k] <- 1-mean(counts$counts[,k]==0)
+zeroWeights <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, designZI=NULL, llTol=1e-4){
+    require(edgeR)
+    if(plot | plotW) par(mfrow=c(1,plot+plotW))
+    counts <- DGEList(counts)
+    counts <- edgeR::calcNormFactors(counts)
+    effLibSize <- counts$samples$lib.size*counts$samples$norm.factors
+    logEffLibSize <- log(effLibSize)
+    zeroId <- counts$counts==0
+    w <- matrix(1,nrow=nrow(counts),ncol=ncol(counts), dimnames=list(c(1:nrow(counts)), NULL))
+    ## starting values based on P(zero) in the library
+    for(k in 1:ncol(w)) w[counts$counts[,k]==0,k] <- 1-mean(counts$counts[,k]==0)
 
-  for(i in 1:maxit){
-    counts$weights <- w
+    llOld <- matrix(-1e4,nrow=nrow(counts),ncol=ncol(counts))
+    likCOld <- matrix(0,nrow=nrow(counts),ncol=ncol(counts))
+    converged=FALSE
+    j=0
 
-    ### M-step counts
-    counts <- estimateGLMCommonDisp(counts,design, interval=c(0,10))
-    counts <- estimateGLMTagwiseDisp(counts, design, prior.df=0, min.row.sum=1)
-    if(plot) plotBCV(counts)
-    fit <- glmFit(counts, design)
-    likC <- dnbinom(counts$counts, mu=fit$fitted.values, size=1/counts$tagwise.dispersion)
+    for(i in 1:maxit){
+      j=j+1
+      zeroId <- counts$counts==0
+      counts$weights <- w
 
-    ### M-step mixture parameter: model zero probability
-    successes <- colSums(1-w) #P(zero)
-    failures <- colSums(w) #1-P(zero)
-    if(is.null(designZI)){
-      zeroFit <- glm(cbind(successes,failures) ~ logEffLibSize, family="binomial")} else{
-        zeroFit <- glm(cbind(successes,failures) ~-1+designZI, family="binomial")}
-    pi0Hat <- predict(zeroFit,type="response")
+      ### M-step counts
+      #only estimate dispersions after weight convergence
+      if(i==1 | converged){
+        counts <- estimateGLMCommonDisp(counts, design, interval=c(0,10))
+        counts <- estimateGLMTagwiseDisp(counts, design, prior.df=0, min.row.sum=1)
+      }
+      if(plot) plotBCV(counts)
+      fit <- glmFit(counts, design)
+      likC <- dnbinom(counts$counts, mu=fit$fitted.values, size=1/counts$tagwise.dispersion)
 
-    ## E-step: Given estimated parameters, calculate expected value of weights
-    pi0HatMat <- expandAsMatrix(pi0Hat,dim=dim(counts),byrow=TRUE)
-    w <- 1-pi0HatMat*zeroId/(pi0HatMat*zeroId+(1-pi0HatMat)*likC*zeroId+1e-15)
-    if(plotW) hist(w[zeroId])
+      ### M-step mixture parameter: model zero probability
+      successes <- colSums(1-w) #P(zero)
+      failures <- colSums(w) #1-P(zero)
+      if(is.null(designZI)){
+        zeroFit <- glm(cbind(successes,failures) ~ logEffLibSize, family="binomial")} else{
+          zeroFit <- glm(cbind(successes,failures) ~-1+designZI, family="binomial")}
+      pi0Hat <- predict(zeroFit,type="response")
+
+      ## E-step: Given estimated parameters, calculate expected value of weights
+      pi0HatMat <- expandAsMatrix(pi0Hat,dim=dim(counts),byrow=TRUE)
+      w <- 1-pi0HatMat*zeroId/(pi0HatMat*zeroId+(1-pi0HatMat)*likC*zeroId+1e-15)
+
+      ## data log-likelihood
+      if(i>1) llOld=ll
+      ll <- log(pi0HatMat*zeroId + (1-pi0HatMat)*likC)
+
+      delta <- (rowSums(ll)-rowSums(llOld))/(rowSums(llOld)+llTol)
+      if(mean(abs(delta) < llTol)>.999){ #if 99.9% has converged
+        if(j==1 & mean(abs(delta) < llTol)>.999){ #final convergence?
+          cat(paste0("converged. \n")) ; return(w)}
+        j=0
+        converged=TRUE} else {converged=FALSE}
+      cat(paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol),"\n"))
+      if(plotW) hist(w[zeroId],main=paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol)))
+    }
+    return(w)
   }
-  return(w)
-}
+
 
 
 #' Estimate weights and weighted dispersions in edgeR analysis
