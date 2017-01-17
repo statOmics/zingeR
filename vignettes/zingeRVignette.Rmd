@@ -1,0 +1,105 @@
+---
+title: "zingeR: zero-inflated negative binomial gene expression in R"
+author: "Koen Van den Berge"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Simulating scRNA-seq data
+
+The \texttt{zingeR} package provides a framework to simulate scRNA-seq data. The user can input a real scRNA-seq dataset to extract feature-level parameters for generating scRNA-seq counts with `getDatasetZTNB`.
+
+```{r}
+library(zingeR)
+library(Biobase)
+library(gamlss)
+library(edgeR)
+data(islamEset,package="zingeR")
+islamHlp=exprs(islamEset)[9:2008,] #first 8 are spike-ins.
+#islamHlp=exprs(islamEset) #first 8 are spike-ins.
+cellType=pData(islamEset)[,"cellType"]
+gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
+paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType))
+#supply offset to correct for entire sequencing experiment.
+```
+
+Next we use the parameters to simulate the expression counts. Library sizes for the simulated samples are by default resampled from the real dataset but they can also be specified.
+The simulation framework models positive and zero counts separately using a hurdle model.
+The zero abundance $p_{gi}$ of a gene $g$ is modelled as a function of its expression intensity (in terms of average log counts per million $A_g$) and the sequencing depth of the sample $i$ using a semiparametric additive logistic regression model.
+Te positive counts are modelled with a zero-truncated negative binomial (ZTNB) distribution with mean $\mu_{gi} = \lambda_{gi} N_i$ and dispersion parameter $\phi_g$.
+The simulation paradigm jointly samples the gene-wise estimated parameters $\{\hat \lambda_{gi}, \hat \phi_g, A_g, p_{gi}\}$ to retain gene specific characteristics present in the original dataset.
+We use the expected probability on zero counts $p_g = \frac{\sum_{i=1}^n p_{gi}}{n}$ to introduce zero counts by simulating from a binomial process. 
+Positive counts are then simulated according to a ZTNB distribution with mean $\hat \mu_{gi} = \hat \lambda_{gi} N_i$ and dispersion $\hat \phi_g$.
+The simulation thus acknowledges both gene-specific characteristics as well as broad associations across all genes and provides realistic scRNA-seq data for method evaluation.
+
+In R, simulating an scRNA-seq experiment happens with the `NBsimSingleCell` function. The function has many arguments to tweak your simulation
+
+ - `dataset` : an expression matrix representing the dataset on which the simulation is based.
+ - `group` : group indicator specifying the attribution of the samples to the different conditions of interest that are being simulated.
+ - `nTags` : the number of features (genes) to simulate. $1000$ by default
+ - `nlibs` : the number of samples to simulate. Defaults to `length(group)`.
+ - `lib.size` : the library sizes for the simulated samples. If `NULL` (default), library sizes are resampled from the original datset.
+ - `pUp` : numeric value between $0$ and $1$ ($0.5$ by default) specifying the proportion of differentially expressed genes that show an upregulation in the second condition.
+ - `foldDiff` : the fold changes used in simulating the differentially expressed genes. Either one numeric value for specifying the same fold change for all DE genes, or a vector of the same length as `ind` to specify fold changes for all differentially expressed genes. Note that fold changes above $1$ should be used as input of which a fraction will be inversed (i.e. simulation downregulation) according to `pUp`. Defaults to $3$.
+ - `verbose` : logical, stating whether progress be printed.
+ - `ind` : integer vector specifying the rows of the count matrix that represent differential features.
+ - `params` : An object containing feature-wise parameters used for simulation as created by `getDatasetZTNB`. If `NULL`, parameters are estimated from the dataset provided.
+ - `randomZero` : A numeric value between $0$ and $1$ specifying the random fraction of cells that are set to zero after simulating the expression count matrix. Defaults to $0$.
+ - `min.dispersion` : The minimum dispersion value to use for simulation. $0.1$ by default.
+ - `max.dipserion` : The maximum dispersion value to use for simulation. $400$ by default.
+ - `drop.extreme.dispersion` : Only applicable if `params=NULL` and used as input to `getDatasetZTNB`. Numeric value between $0$ and $1$ specifying the fraction of highest dispersion values to remove after estimating feature-wise parameters.
+
+```{r}
+nSamples=80
+grp=as.factor(rep(0:1, each = nSamples/2)) #two-group comparison
+nTags=2000 #nr of features
+set.seed(436)
+DEind = sample(1:nTags,floor(nTags*.1),replace=FALSE) #10% differentially expressed
+fcSim=(2 + rexp(length(DEind), rate = 1/2)) #fold changes
+libSizes=sample(colSums(islamHlp),nSamples,replace=TRUE) #library sizes
+simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islamHlp, nTags=nTags, group=grp, verbose=TRUE, params=paramsIslam, lib.size=libSizes)
+head(simDataIslam$counts)
+``` 
+
+# Differential expression analysis
+
+```{r}
+design=model.matrix(~grp)
+
+
+#either estimate weights and use them in your own pipeline
+weights=zeroWeights(counts=simDataIslam$counts, design=design, maxit=3,plotW=TRUE)
+
+# do a zero-inflated edgeR analysis
+library(edgeR)
+d=DGEList(simDataIslam$counts)
+d=calcNormFactors(d)
+d=estimateWeightedDispersions(d,design, maxit=3)
+plotBCV(d)
+fit=glmFit(d,design)
+lrt=glmWeightedF(fit,coef=2)
+baseMean=unname(rowMeans(sweep(d$counts,2,d$samples$norm.factors,FUN="*")))
+lrtFilter=independentFiltering(lrt,filter=baseMean, objectType="edgeR")
+hist(lrtFilter$table$PValue)
+sum(lrtFilter$table$padjFilter<=0.05)
+mean(simDataIslam$indDE%in%which(lrtFilter$table$padjFilter<=0.05))
+mean(which(lrtFilter$table$padjFilter<=0.05)%in%simDataIslam$indNonDE)
+
+# do a zero-inflated limma analysis
+library(limma)
+d=DGEList(simDataIslam$counts)
+nf=calcNormFactors(simDataIslam$counts)
+y=weightedVoom(d,design, nf=nf, maxit=3)
+fit=lmWeightedFit(y,design)
+fit=eBayes(fit)
+tt=topTable(fit,coef=2,sort.by="none",number=nrow(fit))
+ttFiltered=independentFiltering(tt,filter=baseMean, objectType="limma")
+hist(ttFiltered$P.Value)
+sum(ttFiltered$padjFilter<=.05,na.rm=TRUE)
+mean(simDataIslam$indDE%in%which(ttFiltered$padjFilter<=0.05))
+mean(which(ttFiltered$padjFilter<=0.05)%in%simDataIslam$indNonDE)
+``` 
