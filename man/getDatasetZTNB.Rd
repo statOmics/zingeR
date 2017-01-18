@@ -7,9 +7,22 @@
 getDatasetZTNB(counts, design, drop.extreme.dispersion = FALSE)
 }
 \arguments{
-\item{counts}{the expression matrix}
+\item{counts}{A numeric matrix containing gene expression counts.}
+
+\item{design}{The design of the experiments with rows corresponding to samples and columns corresponding to coefficients.}
+
+\item{drop.extreme.dispersion}{Either a numeric value between $0$ and $1$, stating the proportion of genes with extreme (high) dispersions to remove for simulation, or FALSE (default), if no dispersions should be removed for the analysis.}
 }
 \description{
-Estimate feature-wise parameters according to a ZTNB distribution.
+This function fits a zero-truncated negative binomial distribution to the positive counts for each feature (row). Before running this function, a zero-truncated negative binomial distribution family must be created with the \code{gamlss} package as: \code{gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)}
+}
+\examples{
+data(islamEset,package="zingeR")
+islam=exprs(islamEset)[1:2000,]
+design=model.matrix(~pData(islamEset)[,1])
+params = getDatasetZTNB(counts=islam, design=design)
+}
+\seealso{
+\code{\link[zingeR]{NBsimSingleCell}}
 }
 
