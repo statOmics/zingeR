@@ -5,7 +5,7 @@
 \title{Estimate weights and weighted dispersions in edgeR analysis}
 \usage{
 estimateWeightedDispersions(d, design, maxit = 30, plot = FALSE,
-  plotW = FALSE, designZI = NULL, ...)
+  plotW = FALSE, verbose = TRUE, designZI = NULL, llTol = 1e-04, ...)
 }
 \arguments{
 \item{d}{DGEList object containing the gene expression counts.}
@@ -22,6 +22,17 @@ estimateWeightedDispersions(d, design, maxit = 30, plot = FALSE,
 }
 \description{
 This function estimates posterior probabilities to belong to the count component in a zero-inflated negative binomial (ZINB) model and integrates these in dispersion estimation with \code{\link[edgeR]{estimateDisp}}.
+}
+\examples{
+#' library(edgeR)
+data(islamEset,package="zingeR")
+islam=exprs(islamEset)[1:2000,]
+design=model.matrix(~pData(islamEset)[,1])
+d=DGEList(islam)
+d=calcNormFactors(d)
+d=estimateWeightedDispersions(d,design, maxit=200)
+fit=glmFit(d,design)
+lrt=glmWeightedF(fit,coef=2)
 }
 \seealso{
 \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}

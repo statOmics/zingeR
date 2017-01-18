@@ -2,12 +2,38 @@
 % Please edit documentation in R/methods.R
 \name{glmWeightedF}
 \alias{glmWeightedF}
-\title{MUST use F test. Chi-squared does not correct for ZI.}
+\title{Zero-inflation adjusted statistical tests for assessing differential expression.}
 \usage{
 glmWeightedF(glmfit, coef = ncol(glmfit$design), contrast = NULL,
   test = "F", ZI = TRUE)
 }
+\arguments{
+\item{coef}{integer or character vector indicating which coefficients of the linear model are to be tested equal to zero. Values must be columns or column names of design. Defaults to the last coefficient. Ignored if \code{contrast} is specified.}
+
+\item{contrast}{numeric vector or matrix specifying one or more contrasts of the linear model coefficients to be tested equal to zero. Number of rows must equal to the number of columns of \code{design}. If specified, then takes precedence over \code{coef}.}
+
+\item{ZI}{Logical, specifying whether the degrees of freedom in the statistical test should be adjusted according to the weights in the \code{fit} object to account for the downweighting. Defaults to TRUE and this option is highly recommended.}
+
+\item{fit}{a \code{\link[edgeR]{DGEGLM-class}} object, usually output from \code{\link[edgeR]{glmFit}}.}
+}
 \description{
-MUST use F test. Chi-squared does not correct for ZI.
+This function recycles an old version of the \code{\link[edgeR]{glmLRT}} method that allows an F-test with adjusted denominator degrees of freedom to account for the downweighting in the zero-inflation model.
+}
+\examples{
+library(edgeR)
+data(islamEset,package="zingeR")
+islam=exprs(islamEset)[1:2000,]
+design=model.matrix(~pData(islamEset)[,1])
+d=DGEList(islam)
+d=calcNormFactors(d)
+d=estimateWeightedDispersions(d,design, maxit=200)
+fit=glmFit(d,design)
+lrt=glmWeightedF(fit,coef=2)
+}
+\references{
+McCarthy, DJ, Chen, Y, Smyth, GK (2012). Differential expression analysis of multifactor RNA-Seq experiments with respect to biological variation. Nucleic Acids Research 40, 4288-4297.
+}
+\seealso{
+\code{\link[edgeR]{glmLRT}}
 }
 

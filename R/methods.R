@@ -288,14 +288,19 @@
 #' @param plot Logical. Should the BCV plot be plotted in every iteration?
 #' @param plotW Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?
 #' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
-#' @name zeroWeights
-#' @rdname zeroWeights
+#' @name zeroWeightsLS
+#' @rdname zeroWeightsLS
+#' @examples
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
 #' @export
-zeroWeights <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, designZI=NULL, llTol=1e-4){
+zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
     require(edgeR)
     if(plot | plotW) par(mfrow=c(1,plot+plotW))
     counts <- DGEList(counts)
-    counts <- edgeR::calcNormFactors(counts)
+    counts <- suppressWarnings(edgeR::calcNormFactors(counts))
     effLibSize <- counts$samples$lib.size*counts$samples$norm.factors
     logEffLibSize <- log(effLibSize)
     zeroId <- counts$counts==0
@@ -345,7 +350,7 @@ zeroWeights <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, desi
           cat(paste0("converged. \n")) ; return(w)}
         j=0
         converged=TRUE} else {converged=FALSE}
-      cat(paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol),"\n"))
+      if(verbose) cat(paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol),"\n"))
       if(plotW) hist(w[zeroId],main=paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol)))
     }
     return(w)
@@ -365,15 +370,25 @@ zeroWeights <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, desi
 #' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
 #' @seealso
 #' \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}
+#' @examples
+#' #' library(edgeR)
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' d=DGEList(islam)
+#' d=calcNormFactors(d)
+#' d=estimateWeightedDispersions(d,design, maxit=200)
+#' fit=glmFit(d,design)
+#' lrt=glmWeightedF(fit,coef=2)
 #' @name estimateWeightedDispersions
 #' @rdname estimateWeightedDispersions
 #' @export
-estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, designZI=NULL, ...){
+estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, ...){
   #estimate weights
   #use in .estimateDispWeighted
   #return DGEList for edgeR that can be used as input in weighted glmLRT.
   require(edgeR)
-  weights <- zeroWeights(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI)
+  weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol)
   d$weights <- weights
   d <- .estimateDispWeighted(d,design, ...)
   return(d)
@@ -391,23 +406,61 @@ estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=F
 #' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
 #' @seealso
 #' \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}, \code{\link[limma]{voom}}
-#' @name weightedVoom
-#' @rdname weightedVoom
+#' @examples
+#' library(limma)
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' d=DGEList(islam)
+#' nf=calcNormFactors(islam)
+#' y=zeroWeightedVoom(d,design,nf=nf,maxit=200)
+#' fit=lmWeightedFit(y,design)
+#' fit=eBayes(fit)
+#' tt=topTable(fit,coef=2,sort.by="none",number=nrow(fit))
+#' @name zeroWeightedVoom
+#' @rdname zeroWeightedVoom
 #' @export
-weightedVoom <- function(d, design, nf, maxit=30, plot=FALSE, plotW=FALSE, designZI=NULL, ...){
-  weights <- zeroWeights(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI)
+zeroWeightedVoom <- function(d, design, nf, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, ...){
+  zeroWeights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol)
   d$weights <- weights
   y <- voom(d$counts, design=design, plot=FALSE, lib.size = colSums(d$counts)*nf, weights=weights)
-  y$weights <- y$weights*weights
+  y$zeroWeights <- zeroWeights
   return(y)
 }
 
-#' lmFit but with ZI-adjusted residual df.
+#' limma's lmFit but with ZI-adjusted residual df.
+#'
+#' This function is identical to the weighted linear model fit as provided by the \code{\link[limma]{lmFit}} function in the limma package, but adjust the model's residual degrees of freedom according to zero-inflation.
+#'
+#' @param object An \code{\link[limma]{EList-class}} object, usually produced by \code{\link[limma]{voom}} or \code{\link[zingeR]{weightedVoom}}.
+#' @param design The design matrix of the experiment, with rows corresponding to samples and columns to coefficients to be estimated.
+#' @param weights A numeric matrix of observation weights.
+#' @param ... Other optional arguments to be passed to \code{lm.series}, \code{gls.series} or \code{mrlm}.
+#' @details
+#' This function recycles the original \code{\link[limma]{lmFit}} function and adjusts the residual degrees of freedom according to zero-inflation as the sum of the posterior probabilities for a gene minus the number of coefficients to estimate in the model.
+#' @references
+#' Law et al.: voom: precision weights unlock linear model analysis tools for RNA-seq read counts. Genome Biology 2014 15:R29
+#' Smyth, G.K. (2004). Linear models and empirical Bayes methods for assessing di↵erential ex- pression in microarray experiments. Statistical Applications in Genetics and Molecular Biology 3, Article 3.
+#' @seealso \code{\link[limma]{lmFit}}
+#' @examples
+#' library(edgeR)
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' d=DGEList(islam)
+#' nf=calcNormFactors(islam)
+#' y=zeroWeightedVoom(d,design,nf=nf,maxit=200)
+#' fit=lmWeightedFit(y,design)
+#' fit=eBayes(fit)
+#' #inference using e.g. topTable...
+#' @name lmWeightedFit
+#' @rdname lmWeightedFit
 #' @export
 lmWeightedFit <- function (object, design = NULL, ndups = 1, spacing = 1, block = NULL,
           correlation, weights = NULL, method = "ls", ...)
 {
   y <- getEAWP(object)
+  y$zeroWeights <- object$zeroWeights ##
   if (is.null(design))
     design <- y$design
   if (is.null(design))
@@ -427,8 +480,9 @@ lmWeightedFit <- function (object, design = NULL, ndups = 1, spacing = 1, block 
     ndups <- y$printer$ndups
   if (missing(spacing) && !is.null(y$printer$spacing))
     spacing <- y$printer$spacing
-  if (missing(weights) && !is.null(y$weights))
-    weights <- y$weights
+  if (missing(weights) && !(is.null(y$weights) | is.null(y$zeroWeights))) ##
+    #weights <- y$weights
+    weights <- y$weights*y$zeroWeights ##
   method <- match.arg(method, c("ls", "robust"))
   if (ndups > 1) {
     if (!is.null(y$probes))
@@ -462,15 +516,37 @@ lmWeightedFit <- function (object, design = NULL, ndups = 1, spacing = 1, block 
   fit$Amean <- y$Amean
   fit$method <- method
   fit$design <- design
-  fit$df.residual <- rowSums(weights)-ncol(design)
+  fit$df.residual <- rowSums(y$zeroWeights)-ncol(design) ##
   new("MArrayLM", fit)
 }
 
 
-#' MUST use F test. Chi-squared does not correct for ZI.
+#' Zero-inflation adjusted statistical tests for assessing differential expression.
+#'
+#' This function recycles an old version of the \code{\link[edgeR]{glmLRT}} method that allows an F-test with adjusted denominator degrees of freedom to account for the downweighting in the zero-inflation model.
+#'
+#' @param fit a \code{\link[edgeR]{DGEGLM-class}} object, usually output from \code{\link[edgeR]{glmFit}}.
+#' @param coef integer or character vector indicating which coefficients of the linear model are to be tested equal to zero. Values must be columns or column names of design. Defaults to the last coefficient. Ignored if \code{contrast} is specified.
+#' @param contrast numeric vector or matrix specifying one or more contrasts of the linear model coefficients to be tested equal to zero. Number of rows must equal to the number of columns of \code{design}. If specified, then takes precedence over \code{coef}.
+#' @param ZI Logical, specifying whether the degrees of freedom in the statistical test should be adjusted according to the weights in the \code{fit} object to account for the downweighting. Defaults to TRUE and this option is highly recommended.
+#' @references
+#' McCarthy, DJ, Chen, Y, Smyth, GK (2012). Differential expression analysis of multifactor RNA-Seq experiments with respect to biological variation. Nucleic Acids Research 40, 4288-4297.
+#' @seealso \code{\link[edgeR]{glmLRT}}
+#' @examples
+#' library(edgeR)
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' d=DGEList(islam)
+#' d=calcNormFactors(d)
+#' d=estimateWeightedDispersions(d,design, maxit=200)
+#' fit=glmFit(d,design)
+#' lrt=glmWeightedF(fit,coef=2)
+#' @name glmWeightedF
+#' @rdname glmWeightedF
 #' @export
 glmWeightedF <- function(glmfit, coef=ncol(glmfit$design), contrast=NULL, test="F", ZI=TRUE)
-  ## got it from https://github.com/Bioconductor-mirror/edgeR/blob/release-3.0/R/glmfit.R
+  ## function obtained from https://github.com/Bioconductor-mirror/edgeR/blob/release-3.0/R/glmfit.R
   #	Tagwise likelihood ratio tests for DGEGLM
   #	Gordon Smyth, Davis McCarthy and Yunshun Chen.
   #	Created 1 July 2010.  Last modified 22 Nov 2013.
@@ -587,6 +663,31 @@ glmWeightedF <- function(glmfit, coef=ncol(glmfit$design), contrast=NULL, test="
   new("DGELRT",unclass(glmfit))
 }
 
+#' Perform independent filtering in differential expression analysis.
+#'
+#' This function uses the \code{DESeq2} independent filtering method to increase detection power in high throughput gene expression studies.
+#'
+#' @param object Either a \code{\link[edgeR]{DGELRT-class}} object or a \code{\link{data.frame}} with differential expression results.
+#' @param filter The characteristic to use for filtering, usually a measure of normalized mean expression for the features.
+#' @param objectType Either \code{"edgeR"} or \code{"limma"}. If \code{"edgeR"}, it is assumed that \code{object} is of class \code{\link[edgeR]{DGELRT-class}}, the output of \code{\link[edgeR]{glmLRT}}. If \code{"limma"}, it is assumed that \code{object} is a \code{\link{data.frame}} and the output of a limma-voom analysis.
+#' @seealso \code{\link[DESeq2]{results}}
+#' @references
+#' Michael I Love, Wolfgang Huber, and Simon Anders. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology, 15(12):550, dec 2014.
+#' @name independentFiltering
+#' @rdname independentFiltering
+#' @examples
+#' library(limma)
+#' data(islamEset,package="zingeR")
+#' islam=exprs(islamEset)[1:2000,]
+#' design=model.matrix(~pData(islamEset)[,1])
+#' d=DGEList(islam)
+#' nf=calcNormFactors(islam)
+#' y=zeroWeightedVoom(d,design,nf=nf,maxit=200)
+#' fit=lmWeightedFit(y,design)
+#' fit=eBayes(fit)
+#' tt=topTable(fit,coef=2,sort.by="none",number=nrow(fit))
+#' baseMean=unname(rowMeans(sweep(d$counts,2,nf,FUN="*")))
+#' ttFiltered=independentFiltering(tt,filter=baseMean, objectType="limma")
 #' @export
 independentFiltering <- function(object, filter, objectType=c("edgeR","limma")){
   if(objectType=="edgeR"){
@@ -599,6 +700,3 @@ independentFiltering <- function(object, filter, objectType=c("edgeR","limma")){
     return(object)
   } else stop("objectType must be either one of 'edgeR' or 'limma'.")
 }
-
-
-

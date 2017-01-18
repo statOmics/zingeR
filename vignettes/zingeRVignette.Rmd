@@ -62,7 +62,7 @@ DEind = sample(1:nTags,floor(nTags*.1),replace=FALSE) #10% differentially expres
 fcSim=(2 + rexp(length(DEind), rate = 1/2)) #fold changes
 libSizes=sample(colSums(islamHlp),nSamples,replace=TRUE) #library sizes
 simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islamHlp, nTags=nTags, group=grp, verbose=TRUE, params=paramsIslam, lib.size=libSizes)
-head(simDataIslam$counts)
+#head(simDataIslam$counts)
 ``` 
 
 # Differential expression analysis
@@ -72,13 +72,13 @@ design=model.matrix(~grp)
 
 
 #either estimate weights and use them in your own pipeline
-weights=zeroWeights(counts=simDataIslam$counts, design=design, maxit=3,plotW=TRUE)
+weights=zeroWeights(counts=simDataIslam$counts, design=design, maxit=200,plotW=TRUE)
 
 # do a zero-inflated edgeR analysis
 library(edgeR)
 d=DGEList(simDataIslam$counts)
 d=calcNormFactors(d)
-d=estimateWeightedDispersions(d,design, maxit=3)
+d=estimateWeightedDispersions(d,design, maxit=20)
 plotBCV(d)
 fit=glmFit(d,design)
 lrt=glmWeightedF(fit,coef=2)
@@ -86,20 +86,20 @@ baseMean=unname(rowMeans(sweep(d$counts,2,d$samples$norm.factors,FUN="*")))
 lrtFilter=independentFiltering(lrt,filter=baseMean, objectType="edgeR")
 hist(lrtFilter$table$PValue)
 sum(lrtFilter$table$padjFilter<=0.05)
-mean(simDataIslam$indDE%in%which(lrtFilter$table$padjFilter<=0.05))
-mean(which(lrtFilter$table$padjFilter<=0.05)%in%simDataIslam$indNonDE)
+mean(simDataIslam$indDE%in%which(lrtFilter$table$padjFilter<=0.05)) #TPR
+mean(which(lrtFilter$table$padjFilter<=0.05)%in%simDataIslam$indNonDE) #FDR
 
 # do a zero-inflated limma analysis
 library(limma)
 d=DGEList(simDataIslam$counts)
 nf=calcNormFactors(simDataIslam$counts)
-y=weightedVoom(d,design, nf=nf, maxit=3)
+y=zeroWeightedVoom(d,design, nf=nf, maxit=20)
 fit=lmWeightedFit(y,design)
 fit=eBayes(fit)
 tt=topTable(fit,coef=2,sort.by="none",number=nrow(fit))
 ttFiltered=independentFiltering(tt,filter=baseMean, objectType="limma")
 hist(ttFiltered$P.Value)
 sum(ttFiltered$padjFilter<=.05,na.rm=TRUE)
-mean(simDataIslam$indDE%in%which(ttFiltered$padjFilter<=0.05))
-mean(which(ttFiltered$padjFilter<=0.05)%in%simDataIslam$indNonDE)
+mean(simDataIslam$indDE%in%which(ttFiltered$padjFilter<=0.05)) #TPR
+mean(which(ttFiltered$padjFilter<=0.05)%in%simDataIslam$indNonDE) #FDR
 ``` 
