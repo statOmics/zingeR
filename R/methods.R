@@ -297,6 +297,15 @@
 #' zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
 #' @export
 zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
+
+    if (!is.integer(counts)) {
+      if (any(round(counts) != counts)) {
+        stop("some values in assay are not integers")
+      }
+      message("converting counts to integer mode")
+      mode(counts) <- "integer"
+    }
+
     require(edgeR)
     if(plot | plotW) par(mfrow=c(1,plot+plotW))
     counts <- DGEList(counts)
