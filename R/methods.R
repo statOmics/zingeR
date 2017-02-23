@@ -341,8 +341,8 @@ zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, ve
       successes <- colSums(1-w) #P(zero)
       failures <- colSums(w) #1-P(zero)
       if(is.null(designZI)){
-        zeroFit <- glm(cbind(successes,failures) ~ logEffLibSize, family="binomial")} else{
-          zeroFit <- glm(cbind(successes,failures) ~-1+designZI, family="binomial")}
+        zeroFit <- suppressWarnings(glm(cbind(successes,failures) ~ logEffLibSize, family="binomial"))} else{
+          zeroFit <- suppressWarnings(glm(cbind(successes,failures) ~-1+designZI, family="binomial"))}
       pi0Hat <- predict(zeroFit,type="response")
 
       ## E-step: Given estimated parameters, calculate expected value of weights
@@ -403,131 +403,6 @@ estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=F
   return(d)
 }
 
-#' Estimate heteroscedastic and zero-inflation observation weights in limma-voom analysis
-#'
-#' This function estimates posterior probabilities to belong to the count component in a zero-inflated negative binomial (ZINB) model and integrates these with the heteroscedastic weights of the log transformed counts from limma-voom.
-#'
-#' @param d DGEList object containing the gene expression counts.
-#' @param design The design matrix specifying the experimental design.
-#' @param maxit The number of iterations for the EM-algorithm. 30 by default but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}.
-#' @param plot Logical. Should the BCV plot be plotted in every iteration?
-#' @param plotW Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?
-#' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
-#' @seealso
-#' \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}, \code{\link[limma]{voom}}
-#' @examples
-#' library(limma)
-#' data(islamEset,package="zingeR")
-#' islam=exprs(islamEset)[1:2000,]
-#' design=model.matrix(~pData(islamEset)[,1])
-#' d=DGEList(islam)
-#' nf=calcNormFactors(islam)
-#' y=zeroWeightedVoom(d,design,nf=nf,maxit=200)
-#' fit=lmWeightedFit(y,design)
-#' fit=eBayes(fit)
-#' tt=topTable(fit,coef=2,sort.by="none",number=nrow(fit))
-#' @name zeroWeightedVoom
-#' @rdname zeroWeightedVoom
-#' @export
-zeroWeightedVoom <- function(d, design, nf, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, ...){
-  zeroWeights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol)
-  d$weights <- weights
-  y <- voom(d$counts, design=design, plot=FALSE, lib.size = colSums(d$counts)*nf, weights=weights)
-  y$zeroWeights <- zeroWeights
-  return(y)
-}
-
-#' limma's lmFit but with ZI-adjusted residual df.
-#'
-#' This function is identical to the weighted linear model fit as provided by the \code{\link[limma]{lmFit}} function in the limma package, but adjust the model's residual degrees of freedom according to zero-inflation.
-#'
-#' @param object An \code{\link[limma]{EList-class}} object, usually produced by \code{\link[limma]{voom}} or \code{\link[zingeR]{weightedVoom}}.
-#' @param design The design matrix of the experiment, with rows corresponding to samples and columns to coefficients to be estimated.
-#' @param weights A numeric matrix of observation weights.
-#' @param ... Other optional arguments to be passed to \code{lm.series}, \code{gls.series} or \code{mrlm}.
-#' @details
-#' This function recycles the original \code{\link[limma]{lmFit}} function and adjusts the residual degrees of freedom according to zero-inflation as the sum of the posterior probabilities for a gene minus the number of coefficients to estimate in the model.
-#' @references
-#' Law et al.: voom: precision weights unlock linear model analysis tools for RNA-seq read counts. Genome Biology 2014 15:R29
-#' Smyth, G.K. (2004). Linear models and empirical Bayes methods for assessing di↵erential ex- pression in microarray experiments. Statistical Applications in Genetics and Molecular Biology 3, Article 3.
-#' @seealso \code{\link[limma]{lmFit}}
-#' @examples
-#' library(edgeR)
-#' data(islamEset,package="zingeR")
-#' islam=exprs(islamEset)[1:2000,]
-#' design=model.matrix(~pData(islamEset)[,1])
-#' d=DGEList(islam)
-#' nf=calcNormFactors(islam)
-#' y=zeroWeightedVoom(d,design,nf=nf,maxit=200)
-#' fit=lmWeightedFit(y,design)
-#' fit=eBayes(fit)
-#' #inference using e.g. topTable...
-#' @name lmWeightedFit
-#' @rdname lmWeightedFit
-#' @export
-lmWeightedFit <- function (object, design = NULL, ndups = 1, spacing = 1, block = NULL,
-          correlation, weights = NULL, method = "ls", ...)
-{
-  y <- getEAWP(object)
-  y$zeroWeights <- object$zeroWeights ##
-  if (is.null(design))
-    design <- y$design
-  if (is.null(design))
-    design <- matrix(1, ncol(y$exprs), 1)
-  else {
-    design <- as.matrix(design)
-    if (mode(design) != "numeric")
-      stop("design must be a numeric matrix")
-    if (nrow(design) != ncol(y$exprs))
-      stop("row dimension of design doesn't match column dimension of data object")
-  }
-  ne <- nonEstimable(design)
-  if (!is.null(ne))
-    cat("Coefficients not estimable:", paste(ne, collapse = " "),
-        "\n")
-  if (missing(ndups) && !is.null(y$printer$ndups))
-    ndups <- y$printer$ndups
-  if (missing(spacing) && !is.null(y$printer$spacing))
-    spacing <- y$printer$spacing
-  if (missing(weights) && !(is.null(y$weights) | is.null(y$zeroWeights))) ##
-    #weights <- y$weights
-    weights <- y$weights*y$zeroWeights ##
-  method <- match.arg(method, c("ls", "robust"))
-  if (ndups > 1) {
-    if (!is.null(y$probes))
-      y$probes <- uniquegenelist(y$probes, ndups = ndups,
-                                 spacing = spacing)
-    if (!is.null(y$Amean))
-      y$Amean <- rowMeans(unwrapdups(as.matrix(y$Amean),
-                                     ndups = ndups, spacing = spacing), na.rm = TRUE)
-  }
-  if (method == "robust")
-    fit <- mrlm(y$exprs, design = design, ndups = ndups,
-                spacing = spacing, weights = weights, ...)
-  else if (ndups < 2 && is.null(block))
-    fit <- lm.series(y$exprs, design = design, ndups = ndups,
-                     spacing = spacing, weights = weights)
-  else {
-    if (missing(correlation))
-      stop("the correlation must be set, see duplicateCorrelation")
-    fit <- gls.series(y$exprs, design = design, ndups = ndups,
-                      spacing = spacing, block = block, correlation = correlation,
-                      weights = weights, ...)
-  }
-  if (NCOL(fit$coef) > 1) {
-    n <- rowSums(is.na(fit$coef))
-    n <- sum(n > 0 & n < NCOL(fit$coef))
-    if (n > 0)
-      warning("Partial NA coefficients for ", n, " probe(s)",
-              call. = FALSE)
-  }
-  fit$genes <- y$probes
-  fit$Amean <- y$Amean
-  fit$method <- method
-  fit$design <- design
-  fit$df.residual <- rowSums(y$zeroWeights)-ncol(design) ##
-  new("MArrayLM", fit)
-}
 
 
 #' Zero-inflation adjusted statistical tests for assessing differential expression.
@@ -554,8 +429,8 @@ lmWeightedFit <- function (object, design = NULL, ndups = 1, spacing = 1, block 
 #' @name glmWeightedF
 #' @rdname glmWeightedF
 #' @export
-glmWeightedF <- function(glmfit, coef=ncol(glmfit$design), contrast=NULL, test="F", ZI=TRUE)
-  ## function obtained from https://github.com/Bioconductor-mirror/edgeR/blob/release-3.0/R/glmfit.R
+glmWeightedF <- function(glmfit, coef=ncol(glmfit$design), contrast=NULL, test="F", ZI=TRUE, independentFiltering=TRUE, filter=NULL)
+  ## original function obtained from https://github.com/Bioconductor-mirror/edgeR/blob/release-3.0/R/glmfit.R
   #	Tagwise likelihood ratio tests for DGEGLM
   #	Gordon Smyth, Davis McCarthy and Yunshun Chen.
   #	Created 1 July 2010.  Last modified 22 Nov 2013.
@@ -669,7 +544,11 @@ glmWeightedF <- function(glmfit, coef=ncol(glmfit$design), contrast=NULL, test="
   glmfit$table <- tab
   glmfit$comparison <- coef.name
   glmfit$df.test <- df.test
-  new("DGELRT",unclass(glmfit))
+  res <- new("DGELRT",unclass(glmfit))
+  if(independentFiltering){
+    if(is.null(filter)) filter=rowMeans(glmfit$fitted.values) #aprrox. linear w\ basemean
+    res <- independentFiltering(res,filter=filter, objectType="edgeR")
+  } else return(res)
 }
 
 #' Perform independent filtering in differential expression analysis.

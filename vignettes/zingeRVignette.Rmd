@@ -17,14 +17,14 @@ The \texttt{zingeR} package provides a framework to simulate scRNA-seq data. The
 library(zingeR)
 library(Biobase)
 library(gamlss)
+library(gamlss.tr)
 library(edgeR)
 data(islamEset,package="zingeR")
 islamHlp=exprs(islamEset)[9:2008,] #first 8 are spike-ins.
-#islamHlp=exprs(islamEset) #first 8 are spike-ins.
 cellType=pData(islamEset)[,"cellType"]
+offset=colSums(exprs(islamEset)[9:nrow(exprs(islamEset)),])
 gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
-paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType))
-#supply offset to correct for entire sequencing experiment.
+paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType), offset=offset)
 ```
 
 Next we use the parameters to simulate the expression counts. Library sizes for the simulated samples are by default resampled from the real dataset but they can also be specified.
@@ -62,10 +62,11 @@ DEind = sample(1:nTags,floor(nTags*.1),replace=FALSE) #10% differentially expres
 fcSim=(2 + rexp(length(DEind), rate = 1/2)) #fold changes
 libSizes=sample(colSums(islamHlp),nSamples,replace=TRUE) #library sizes
 simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islamHlp, nTags=nTags, group=grp, verbose=TRUE, params=paramsIslam, lib.size=libSizes)
+simDataIslam$counts[1:5,1:5]
 #head(simDataIslam$counts)
 
 #show comparable BCV
-
+d=DGEList()
 ``` 
 
 # Differential expression analysis
@@ -75,7 +76,7 @@ design=model.matrix(~grp)
 
 
 #either estimate weights and use them in your own pipeline
-weights=zeroWeights(counts=simDataIslam$counts, design=design, maxit=200,plotW=TRUE)
+weights=zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=200,plotW=TRUE)
 
 # do a zero-inflated edgeR analysis
 library(edgeR)

@@ -5,7 +5,7 @@
 \title{Zero-inflation adjusted statistical tests for assessing differential expression.}
 \usage{
 glmWeightedF(glmfit, coef = ncol(glmfit$design), contrast = NULL,
-  test = "F", ZI = TRUE)
+  test = "F", ZI = TRUE, independentFiltering = TRUE, filter = NULL)
 }
 \arguments{
 \item{coef}{integer or character vector indicating which coefficients of the linear model are to be tested equal to zero. Values must be columns or column names of design. Defaults to the last coefficient. Ignored if \code{contrast} is specified.}

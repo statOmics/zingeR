@@ -1,0 +1,109 @@
+---
+title: "zingeR: zero-inflated negative binomial gene expression in R"
+author: "Koen Van den Berge"
+date: "`r Sys.Date()`"
+bibliography: /Users/koenvandenberge/Documents/Mendeley/library.bib
+output:
+  html_document:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{zingeR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Simulating scRNA-seq data
+
+The \texttt{zingeR} package provides a framework to simulate scRNA-seq data. The user can input a real scRNA-seq dataset to extract feature-level parameters for generating scRNA-seq expression counts. The `getDatasetZTNB` function will estimate empirical mean expression proportions $\bar{\lambda}_g = \frac{1}{n} \sum_{i=1}^n \frac{y_{gi}}{N_i}$, with $n$ the number of samples, $y_{gi}$ the expression count for gene $g$ in sample $i$ and $N_i$ the library size (sequencing depth) of sample $i$. The function also estimates dispersions $\phi_g$ based on the zero-truncated negative binomial (ZTNB) distribution.  Additionally, the function derives empirical probabilities on zero counts $p_{gi}$. Aside from these feature-specific parameters, `getDatasetZTNB` also estimates the global association of $p_{gi}$ with (a smooth function of) the average log CPM $A_g$ of a gene and the library size $N_i$.
+In order to do estimate the dispersions, we first define the ZTNB distribution using the `gen.trun` function from the `gamlss.tr` package [@Rigby2005].
+
+```{r}
+suppressPackageStartupMessages({
+  library(zingeR)
+library(Biobase)
+library(gamlss)
+library(gamlss.tr)
+library(edgeR)
+})
+data(islamEset,package="zingeR")
+islamHlp=exprs(islamEset)[9:2008,] #first 8 are spike-ins.
+cellType=pData(islamEset)[,"cellType"]
+offset=colSums(exprs(islamEset)[9:nrow(exprs(islamEset)),])
+gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
+paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType))
+```
+
+Next we use the parameters to simulate the expression counts. Library sizes for the simulated samples are by default resampled from the input dataset but they can also be specified.
+The simulation framework models positive and zero counts separately using a hurdle model.
+The zero abundance $p_{gi}$ of a gene $g$ is modelled as a function of its expression intensity (in terms of average log counts per million $A_g$) and the sequencing depth of the sample $i$ using a semiparametric additive logistic regression model.
+Te positive counts are modelled with a zero-truncated negative binomial (ZTNB) distribution with mean $\mu_{gi} = \lambda_{gi} N_i$ and dispersion parameter $\phi_g$.
+The simulation paradigm jointly samples the gene-wise estimated parameters $\{\hat \lambda_{gi}, \hat \phi_g, A_g, p_{gi}\}$ to retain gene specific characteristics present in the original dataset.
+Positive counts are then simulated according to a ZTNB distribution with mean $\hat \mu_{gi} = \hat \lambda_{gi} N_i$ and dispersion $\hat \phi_g$.
+We use the expected probability on zero counts $p_g = \frac{\sum_{i=1}^n p_{gi}}{n}$ to introduce zero counts by simulating from a binomial process. 
+The simulation thus acknowledges both gene-specific characteristics as well as broad associations across all genes and provides realistic scRNA-seq data.
+
+One can use the `NBsimSingleCell` function to simulate a scRNA-seq experiment. The simulation settings can be adaptoed by changing the arguments of the function:
+
+ - `dataset` : an expression matrix representing the dataset on which the simulation is based.
+ - `group` : group indicator specifying the attribution of the samples to the different conditions of interest that are being simulated.
+ - `nTags` : the number of features (genes) to simulate. $1000$ by default
+ - `nlibs` : the number of samples to simulate. Defaults to `length(group)`.
+ - `lib.size` : the library sizes for the simulated samples. If `NULL` (default), library sizes are resampled from the original datset.
+ - `pUp` : numeric value between $0$ and $1$ ($0.5$ by default) specifying the proportion of differentially expressed genes that show an upregulation in the second condition.
+ - `foldDiff` : the fold changes used in simulating the differentially expressed genes. Either one numeric value for specifying the same fold change for all DE genes, or a vector of the same length as `ind` to specify fold changes for all differentially expressed genes. Note that only fold changes strictly higher than $1$ should be used as input from which a fraction (defined by `pUp`) will be inversed to simulatie downregulation in the second condition. Defaults to $3$.
+ - `verbose` : logical, stating whether progress should be printed.
+ - `ind` : integer vector specifying the rows of the count matrix that contain differential features.
+ - `params` : An object containing feature-wise parameters used for simulation, typically the output from `getDatasetZTNB`. If `NULL`, parameters are estimated from the dataset provided.
+ - `randomZero` : A numeric value between $0$ and $1$ specifying the random fraction of expression counts that are set to zero after simulating the expression count matrix. Defaults to $0$.
+ - `min.dispersion` : The minimum dispersion value to use for simulation. $0.1$ by default.
+ - `max.dipserion` : The maximum dispersion value to use for simulation. $400$ by default.
+ - `drop.extreme.dispersion` : Only applicable if `params=NULL` and used as input to `getDatasetZTNB`. Numeric value between $0$ and $1$ specifying the fraction of highest dispersion values to remove after estimating feature-wise parameters.
+
+```{r}
+nSamples=80
+grp=as.factor(rep(0:1, each = nSamples/2)) #two-group comparison
+nTags=2000 #nr of features
+set.seed(436)
+DEind = sample(1:nTags,floor(nTags*.1),replace=FALSE) #10% differentially expressed
+fcSim=(2 + rexp(length(DEind), rate = 1/2)) #fold changes
+libSizes=sample(colSums(islamHlp),nSamples,replace=TRUE) #library sizes
+simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islamHlp, nTags=nTags, group=grp, verbose=TRUE, params=paramsIslam, lib.size=libSizes)
+simDataIslam$counts[1:5,1:5]
+#head(simDataIslam$counts)
+
+#show comparable BCV
+dOrig=suppressWarnings(edgeR::calcNormFactors(DGEList(islamHlp)))
+dOrig=estimateGLMTagwiseDisp(estimateGLMCommonDisp(dOrig, design=model.matrix(~cellType), interval=c(0,10)),prior.df=0)
+
+d=suppressWarnings(edgeR::calcNormFactors(DGEList(simDataIslam$counts)))
+d=estimateGLMTagwiseDisp(estimateGLMCommonDisp(d, design=model.matrix(~grp), interval=c(0,10)),prior.df=0)
+
+par(mfrow=c(1,2))
+plotBCV(dOrig,ylim=c(0,13), xlim=c(4,16))
+plotBCV(d,ylim=c(0,13), xlim=c(4,16))
+par(mfrow=c(1,1))
+```
+
+# Differential expression analysis
+
+```{r}
+design=model.matrix(~grp)
+
+
+#either estimate weights and use them in your own pipeline
+weights=zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=20,plotW=FALSE)
+hist(weights[simDataIslam$counts==0], main="post. prob. on count component for all zeros")
+
+# do a zero-inflated edgeR analysis
+library(edgeR)
+d=DGEList(simDataIslam$counts)
+d=suppressWarnings(calcNormFactors(d)) #or whichever normalisation procedure you would like.
+d=estimateWeightedDispersions(d,design, maxit=20)
+plotBCV(d)
+fit=glmFit(d,design)
+lrt=glmWeightedF(fit,coef=2, independentFiltering = TRUE)
+hist(lrt$table$PValue)
+sum(lrt$table$padjFilter<=0.05, na.rm=TRUE)
+mean(simDataIslam$indDE%in%which(lrt$table$padjFilter<=0.05)) #TPR
+mean(which(lrt$table$padjFilter<=0.05)%in%simDataIslam$indNonDE) #FDR
+``` 

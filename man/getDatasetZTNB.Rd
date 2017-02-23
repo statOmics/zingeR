@@ -4,7 +4,8 @@
 \alias{getDatasetZTNB}
 \title{Estimate feature-wise parameters according to a ZTNB distribution.}
 \usage{
-getDatasetZTNB(counts, design, drop.extreme.dispersion = FALSE)
+getDatasetZTNB(counts, design, drop.extreme.dispersion = FALSE,
+  offset = NULL)
 }
 \arguments{
 \item{counts}{A numeric matrix containing gene expression counts.}
@@ -12,6 +13,8 @@ getDatasetZTNB(counts, design, drop.extreme.dispersion = FALSE)
 \item{design}{The design of the experiments with rows corresponding to samples and columns corresponding to coefficients.}
 
 \item{drop.extreme.dispersion}{Either a numeric value between $0$ and $1$, stating the proportion of genes with extreme (high) dispersions to remove for simulation, or FALSE (default), if no dispersions should be removed for the analysis.}
+
+\item{offset}{The offset to use (typically the sequencing depth) when estimating gene-wise means and dispersions in the zero-truncated negative binomial model. These parameters will be used as a basis for the simulation.}
 }
 \description{
 This function fits a zero-truncated negative binomial distribution to the positive counts for each feature (row). Before running this function, a zero-truncated negative binomial distribution family must be created with the \code{gamlss} package as: \code{gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)}

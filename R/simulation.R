@@ -1,6 +1,6 @@
 
-.getParamsZTNB <- function(counts, offset, design=NULL) {
 
+.getParamsZTNB <- function(counts, offset, design=NULL) {
   libSize=offset
   #fit a ZTNB model only on positive counts part
   countsModel = counts[counts>0]
@@ -9,10 +9,10 @@
   if(is.null(design)){designFit=matrix(1,nrow=length(countsModel),ncol=1)} else {designFit=design[counts>0,]}
   fit=suppressWarnings(try(gamlss(formula=countsModel~-1+designFit+offset(log(libSizeModel)), family="NBIZeroTruncated", control=gamlss.control(trace=FALSE, n.cyc=300)),silent=TRUE))
 
-
   if(class(fit)[1]=="try-error") return(c(dispersion=NA, lambda=NA))
   #lambda=exp(fit$mu.coefficients)
   lambda=mean(countsModel/libSizeModel)
+  #lambda=exp(mean(fit$mu.coefficients)) #geometric mean
   dispersion=exp(fit$sigma.coefficients)
   return(c(dispersion=dispersion,lambda=lambda))
 }
@@ -24,6 +24,7 @@
 #' @param counts A numeric matrix containing gene expression counts.
 #' @param design The design of the experiments with rows corresponding to samples and columns corresponding to coefficients.
 #' @param drop.extreme.dispersion Either a numeric value between $0$ and $1$, stating the proportion of genes with extreme (high) dispersions to remove for simulation, or FALSE (default), if no dispersions should be removed for the analysis.
+#' @param offset The offset to use (typically the sequencing depth) when estimating gene-wise means and dispersions in the zero-truncated negative binomial model. These parameters will be used as a basis for the simulation.
 #' @seealso \code{\link[zingeR]{NBsimSingleCell}}
 #' @examples
 #' data(islamEset,package="zingeR")
@@ -33,7 +34,8 @@
 #' @name getDatasetZTNB
 #' @rdname getDatasetZTNB
 #' @export
-getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE){
+getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offset=NULL){
+  #makeZTNB()
 
   #loadNamespace("gamlss.tr")
   #loadNamespace("gamlss")
@@ -42,8 +44,9 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE){
   #loadNamespace("edgeR")
 
   #create ZTNB distribution
-  suppressPackageStartupMessages({library(gamlss)}) #for loading NBI family.
+  #suppressPackageStartupMessages({library(gamlss)}) #for loading NBI family.
   #gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
+  # ISSUE: he only creates the d and p functions but not the others??
 
   #### estimate lambda and overdispersion based on ZTNB.
   d <- edgeR::DGEList(counts)
@@ -51,7 +54,9 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE){
   dFiltered=d
   dFiltered <- edgeR::calcNormFactors(dFiltered)
   dFiltered$AveLogCPM <- edgeR::aveLogCPM(dFiltered)
-  params=t(apply(dFiltered$counts,1,function(x) .getParamsZTNB(counts=x,offset=dFiltered$samples$lib.size, design=design)))
+  if(is.null(offset)) offset=dFiltered$samples$lib.size
+  library(gamlss) ; library(gamlss.tr)
+  params=t(apply(dFiltered$counts,1,function(x) .getParamsZTNB(counts=x, offset=offset, design=design)))
   rmRows = which(params[,2]>1) #impossibly high lambda
   rmRows2 = which(params[,2]==0) #zero lambda
   naRows = which(apply(params,1, function(row) any(is.na(row)))) #not fitted
