@@ -19,7 +19,7 @@ In order to do estimate the dispersions, we first define the ZTNB distribution u
 
 ```{r}
 suppressPackageStartupMessages({
-  library(zingeR)
+library(zingeR)
 library(Biobase)
 library(gamlss)
 library(gamlss.tr)
@@ -28,8 +28,6 @@ library(edgeR)
 data(islamEset,package="zingeR")
 islamHlp=exprs(islamEset)[9:2008,] #first 8 are spike-ins.
 cellType=pData(islamEset)[,"cellType"]
-offset=colSums(exprs(islamEset)[9:nrow(exprs(islamEset)),])
-gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
 paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType))
 ```
 
@@ -82,18 +80,35 @@ par(mfrow=c(1,2))
 plotBCV(dOrig,ylim=c(0,13), xlim=c(4,16))
 plotBCV(d,ylim=c(0,13), xlim=c(4,16))
 par(mfrow=c(1,1))
+
+# association of library size with zeros
+plot(x=log(colSums(islamHlp)), y=colMeans(islamHlp==0), xlab="Log library size", ylab="Fraction of zeros", xlim=c(5.5,13))
+points(x=log(colSums(simDataIslam$counts)), y=colMeans(simDataIslam$counts==0), col=2)
+
+# association of aveLogCPM with zeros
+library(scales)
+plot(x=edgeR::aveLogCPM(islamHlp), y=rowMeans(islamHlp==0), xlab="Average log CPM", ylab="Fraction of zeros", ylim=c(0,1), col=alpha(1,1/2), pch=19, cex=.3)
+points(x=edgeR::aveLogCPM(simDataIslam$counts), y=rowMeans(simDataIslam$counts==0),col=alpha(2,1/2),pch=19,cex=.3)
 ```
 
-# Differential expression analysis
+# Analysis
+
+## Estimating observation-level zero-inflation weights
+
+\texttt{zeroWeightsLS} is the core function of \texttt{zingeR} and estimates posterior probabilities that can be used as observation-level weights to allow a zero-inflated negative binomial analysis.
+
+
 
 ```{r}
+# estimating weights and use them with your method of interest
 design=model.matrix(~grp)
-
-
-#either estimate weights and use them in your own pipeline
 weights=zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=20,plotW=FALSE)
 hist(weights[simDataIslam$counts==0], main="post. prob. on count component for all zeros")
+```
 
+## Differential expression
+
+```{r}
 # do a zero-inflated edgeR analysis
 library(edgeR)
 d=DGEList(simDataIslam$counts)

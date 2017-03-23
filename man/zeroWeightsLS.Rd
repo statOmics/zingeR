@@ -4,8 +4,9 @@
 \alias{zeroWeightsLS}
 \title{Estimate ZINB count component posterior probabilities}
 \usage{
-zeroWeightsLS(counts, design, maxit = 100, plot = FALSE, plotW = FALSE,
-  verbose = TRUE, designZI = NULL, llTol = 1e-04)
+zeroWeightsLS(counts, design, maxit = 100, normalization = "TMM", colData,
+  designFormula, normFactors, plot = FALSE, plotW = FALSE, verbose = TRUE,
+  designZI = NULL, llTol = 1e-04)
 }
 \arguments{
 \item{counts}{A count matrix with feature-wise expression values. Values in this matrix must be integers.}
@@ -14,11 +15,22 @@ zeroWeightsLS(counts, design, maxit = 100, plot = FALSE, plotW = FALSE,
 
 \item{maxit}{The number of iterations for the EM-algorithm. 30 by default but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}.}
 
+\item{normalization}{The normalization method to use. Can be one of \code{"TMM"}, \code{"DESeq2"} or \code{"phyloseq"}. If none of the methods are of interest, global normalization factors can also be given as input in the \code{normFactors} argument.
+If \code{"TMM"}, the trimmed mean of M-values (Robinson & Oshlack, 2010) normalization is used as implemented in \code{edgeR.}.
+If \code{"DESeq2"}, the default median-of-ratios method from the \code{DESeq2} package (Love et al., 2014) is used for normalization.
+If \code{"phyloseq"}, an adapted median-of-ratios method as implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013) is used. The adaptation ensures that genes with zero counts can be used for the purpose of normalization.}
+
+\item{colData}{Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The \code{colData} with pheno data for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.}
+
+\item{designFormula}{Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The design formula required for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.}
+
+\item{normFactors}{A vector of user-supplied global normalization factors for every sample. The normalization factors should be sorted according to the samples in the count matrix.}
+
 \item{plot}{Logical. Should the BCV plot be plotted in every iteration?}
 
 \item{plotW}{Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?}
 
-\item{designZI.}{The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.}
+\item{designZI}{The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.}
 }
 \description{
 This function estimates posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.
@@ -28,5 +40,12 @@ data(islamEset,package="zingeR")
 islam=exprs(islamEset)[1:2000,]
 design=model.matrix(~pData(islamEset)[,1])
 zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
+}
+\references{
+Robinson MD and Oshlack A (2010). "A scaling normalization method for differential expression analysis of RNA-seq data." Genome Biology, 11, pp. 25.
+
+Love MI, Huber W and Anders S (2014). "Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2." Genome Biology, 15, pp. 550.
+
+McMurdie PJ and Holmes S (2013). "phyloseq: An R package for reproducible interactive analysis and graphics of microbiome census data." PLoS ONE, 8(4), pp. e61217.
 }
 

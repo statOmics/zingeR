@@ -1,13 +1,46 @@
+.mytrun <- function (par = c(0), family = "NO",
+                     name = "tr", type = c("left", "right", "both"),
+                     varying = FALSE, ...)
+{
+  ## Function adapted from gen.trun because of issue with namespaces.
+  ## Function written by Joris Meys on 2017/02/24.
+
+  type <- match.arg(type)
+  fam <- as.gamlss.family(family)
+  fname <- fam$family[[1]]
+  dfun <- paste(paste("d", fname, sep = ""), name, sep = "")
+  pfun <- paste(paste("p", fname, sep = ""), name, sep = "")
+  qfun <- paste(paste("q", fname, sep = ""), name, sep = "")
+  rfun <- paste(paste("r", fname, sep = ""), name, sep = "")
+  fun <- paste(fname, name, sep = "")
+  alldislist <- c(dfun, pfun, qfun, rfun, fun)
+
+  d.f <- trun.d(par, family = fname, type = type, varying = varying,
+                ...)
+  p.f <- trun.p(par, family = fname, type = type, varying = varying,
+                ...)
+  q.f <- trun.q(par, family = fname, type = type, varying = varying,
+                ...)
+  r.f <- trun.r(par, family = fname, type = type, varying = varying,
+                ...)
+  f <- trun(par, family = fname, type = type,
+            name = name, local = FALSE, varying = varying, ...)
+
+  out <- list(d.f, p.f, q.f, r.f, f)
+  names(out) <- alldislist
+  return(out)
+}
 
 
-.getParamsZTNB <- function(counts, offset, design=NULL) {
+
+.getParamsZTNB <- function(counts, offset, design=NULL, ztnbFun=NULL) {
   libSize=offset
   #fit a ZTNB model only on positive counts part
   countsModel = counts[counts>0]
   if(length(countsModel)<2) stop("Need at least two positive counts")
   libSizeModel = libSize[counts>0]
   if(is.null(design)){designFit=matrix(1,nrow=length(countsModel),ncol=1)} else {designFit=design[counts>0,]}
-  fit=suppressWarnings(try(gamlss(formula=countsModel~-1+designFit+offset(log(libSizeModel)), family="NBIZeroTruncated", control=gamlss.control(trace=FALSE, n.cyc=300)),silent=TRUE))
+  fit=suppressWarnings(try(gamlss(formula=countsModel~-1+designFit+offset(log(libSizeModel)), family=ztnbFun$NBIZeroTruncated, control=gamlss.control(trace=FALSE, n.cyc=300)),silent=TRUE))
 
   if(class(fit)[1]=="try-error") return(c(dispersion=NA, lambda=NA))
   #lambda=exp(fit$mu.coefficients)
@@ -35,18 +68,9 @@
 #' @rdname getDatasetZTNB
 #' @export
 getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offset=NULL){
-  #makeZTNB()
-
-  #loadNamespace("gamlss.tr")
-  #loadNamespace("gamlss")
-  #loadNamespace("mgcv")
-  #loadNamespace("MASS")
-  #loadNamespace("edgeR")
 
   #create ZTNB distribution
-  #suppressPackageStartupMessages({library(gamlss)}) #for loading NBI family.
-  #gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
-  # ISSUE: he only creates the d and p functions but not the others??
+  ztnbFun = .mytrun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)
 
   #### estimate lambda and overdispersion based on ZTNB.
   d <- edgeR::DGEList(counts)
@@ -56,7 +80,7 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offse
   dFiltered$AveLogCPM <- edgeR::aveLogCPM(dFiltered)
   if(is.null(offset)) offset=dFiltered$samples$lib.size
   library(gamlss) ; library(gamlss.tr)
-  params=t(apply(dFiltered$counts,1,function(x) .getParamsZTNB(counts=x, offset=offset, design=design)))
+  params=t(apply(dFiltered$counts,1,function(x) .getParamsZTNB(counts=x, offset=offset, design=design, ztnbFun=ztnbFun)))
   rmRows = which(params[,2]>1) #impossibly high lambda
   rmRows2 = which(params[,2]==0) #zero lambda
   naRows = which(apply(params,1, function(row) any(is.na(row)))) #not fitted
@@ -92,7 +116,8 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offse
         colSums(counts[which(binRows),]==0)
   }))
   expectCounts=cbind(c(nullCounts),c(nonNullCounts))
-  zeroFit=mgcv::gam(expectCounts~s(midsHlp)+logLibHlp,family=binomial)
+  #zeroFit=mgcv::gam(expectCounts~s(midsHlp)+logLibHlp,family=binomial)
+  zeroFit=mgcv::gam(expectCounts~s(midsHlp,by=logLibHlp),family=binomial)
 
   ### drop extreme dispersions
   dFiltered$AveLogCPM <- edgeR::aveLogCPM(dFiltered)

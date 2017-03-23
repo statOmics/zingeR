@@ -280,23 +280,38 @@
 
 #' Estimate ZINB count component posterior probabilities
 #'
-#' This function estimates posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.
+#' Estimate posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.
 #'
 #' @param counts A count matrix with feature-wise expression values. Values in this matrix must be integers.
 #' @param design Design matrix specifying the experimental design.
-#' @param maxit The number of iterations for the EM-algorithm. 30 by default but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}.
+#' @param designZI The design for the zero-excess model. If \code{NULL}, the effective library size (defined as the sequencing depth multiplied by the normalization factors) is used by default.
+#' @param normalization The normalization method to use. Can be one of \code{"TMM"}, \code{"DESeq2"} or \code{"phyloseq"}. If none of the methods are of interest, global normalization factors can also be given as input in the \code{normFactors} argument.
+#'      If \code{"TMM"}, the trimmed mean of M-values (Robinson & Oshlack, 2010) normalization is used as implemented in \code{edgeR}.
+#'      If \code{"DESeq2"}, the default median-of-ratios method from the \code{DESeq2} package (Love et al., 2014) is used for normalization.
+#'      If \code{"phyloseq"}, an adapted median-of-ratios method as implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013) is used. The adaptation ensures that genes with zero counts can be used for the purpose of normalization.
+#' @param normFactors A vector of user-supplied global normalization factors for every sample. The normalization factors should be sorted according to the samples in the count matrix.
+#' @param colData Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The \code{colData} with pheno data for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
+#' @param designFormula Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The design formula required for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
+#' @param maxit The number of iterations for the EM-algorithm. 200 by default, but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}. The EM-algorithm will automatically stop if convergence is achieved before the maximum number of iterations.
 #' @param plot Logical. Should the BCV plot be plotted in every iteration?
 #' @param plotW Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?
-#' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
 #' @name zeroWeightsLS
 #' @rdname zeroWeightsLS
+#' @references
+#'
+#' Robinson MD and Oshlack A (2010). "A scaling normalization method for differential expression analysis of RNA-seq data." Genome Biology, 11, pp. 25.
+#'
+#' Love MI, Huber W and Anders S (2014). "Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2." Genome Biology, 15, pp. 550.
+#'
+#' McMurdie PJ and Holmes S (2013). "phyloseq: An R package for reproducible interactive analysis and graphics of microbiome census data." PLoS ONE, 8(4), pp. e61217.
+#'
 #' @examples
 #' data(islamEset,package="zingeR")
 #' islam=exprs(islamEset)[1:2000,]
 #' design=model.matrix(~pData(islamEset)[,1])
 #' zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
 #' @export
-zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
+zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colData, designFormula, normFactors, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
 
     if (!is.integer(counts)) {
       if (any(round(counts) != counts)) {
@@ -309,7 +324,23 @@ zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, ve
     require(edgeR)
     if(plot | plotW) par(mfrow=c(1,plot+plotW))
     counts <- DGEList(counts)
-    counts <- suppressWarnings(edgeR::calcNormFactors(counts))
+    if(normalization=="TMM"){
+      counts <- suppressWarnings(edgeR::calcNormFactors(counts))
+    } else if(normalization=="DESeq2"){
+      dse = DESeqDataSetFromMatrix(counts$counts, colData=colData, design=designFormula)
+      dse = DESeq2::estimateSizeFactors(dse)
+      counts$samples$norm.factors = 1/dse$sizeFactor
+    } else if(normalization=="phyloseq"){
+      gm_mean = function(x, na.rm=TRUE){
+        exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+      }
+      dse = DESeqDataSetFromMatrix(counts$counts, colData=colData, design=designFormula)
+      geoMeans = apply(counts(dse), 1, gm_mean)
+      dse = DESeq2::estimateSizeFactors(dse, geoMeans = geoMeans)
+      counts$samples$norm.factors = 1/dse$sizeFactor
+    }
+    # user input normalization factors
+    if(!is.null(normFactors)) counts$samples$norm.factors = normFactors
     effLibSize <- counts$samples$lib.size*counts$samples$norm.factors
     logEffLibSize <- log(effLibSize)
     zeroId <- counts$counts==0
@@ -359,7 +390,7 @@ zeroWeightsLS <- function(counts, design, maxit=100, plot=FALSE, plotW=FALSE, ve
           cat(paste0("converged. \n")) ; return(w)}
         j=0
         converged=TRUE} else {converged=FALSE}
-      if(verbose) cat(paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol),"\n"))
+      if(verbose) cat(paste0("iteration: ",i,". mean conv.: ",round(mean(abs(delta) < llTol),5),"\n"))
       if(plotW) hist(w[zeroId],main=paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol)))
     }
     return(w)
