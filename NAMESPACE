@@ -3,6 +3,7 @@
 export(NBsimSingleCell)
 export(estimateWeightedDispersions)
 export(getDatasetZTNB)
+export(getTResults)
 export(glmWeightedF)
 export(independentFiltering)
 export(zeroWeightsLS)

@@ -618,3 +618,19 @@ independentFiltering <- function(object, filter, objectType=c("edgeR","limma")){
     return(object)
   } else stop("objectType must be either one of 'edgeR' or 'limma'.")
 }
+
+#' Preliminary function for t-test using DESeq2.
+#'
+#' This function uses the test statistics in the standard DESeq2 object obtained from the \code{results} function to perform a t-test with degrees of freedom adjusted to zero-inflation downweighting.
+#'
+#' @param res The DESeq2 object obtained from \code{results}.
+#' @param weights The zingeR weights
+#' @param filter The variable to filter on.
+#' @name getTResults
+#' @rdname getTResults
+#' @export
+getTResults <- function(res, weights, filter){
+  pval = 2*(1-pt(abs(res$stat),df=rowSums(weights)-2))
+  hlp <- .pvalueAdjustment_kvdb(filter=filter, pValue=pval)
+  data.frame(pval=pval, padj=hlp$padj)
+}

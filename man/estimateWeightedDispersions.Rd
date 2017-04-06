@@ -5,7 +5,8 @@
 \title{Estimate weights and weighted dispersions in edgeR analysis}
 \usage{
 estimateWeightedDispersions(d, design, maxit = 30, plot = FALSE,
-  plotW = FALSE, verbose = TRUE, designZI = NULL, llTol = 1e-04, ...)
+  plotW = FALSE, verbose = TRUE, designZI = NULL, llTol = 1e-04,
+  normalization = "TMM", normFactors = NULL, weights = NULL, ...)
 }
 \arguments{
 \item{d}{DGEList object containing the gene expression counts.}
@@ -17,6 +18,8 @@ estimateWeightedDispersions(d, design, maxit = 30, plot = FALSE,
 \item{plot}{Logical. Should the BCV plot be plotted in every iteration?}
 
 \item{plotW}{Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?}
+
+\item{...}{Other arguments passed on to a weighted version of \code{\link[edgeR]{estimateDisp}}}
 
 \item{designZI.}{The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.}
 }
@@ -35,6 +38,6 @@ fit=glmFit(d,design)
 lrt=glmWeightedF(fit,coef=2)
 }
 \seealso{
-\code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}
+\code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}, \code{\link[edgeR]{estimateDisp}}
 }
 

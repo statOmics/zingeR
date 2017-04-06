@@ -91,11 +91,9 @@ plot(x=edgeR::aveLogCPM(islamHlp), y=rowMeans(islamHlp==0), xlab="Average log CP
 points(x=edgeR::aveLogCPM(simDataIslam$counts), y=rowMeans(simDataIslam$counts==0),col=alpha(2,1/2),pch=19,cex=.3)
 ```
 
-# Analysis
+# Differential expression analysis
 
-## Differential expression
-
-### zingeR-edgeR
+## zingeR-edgeR
 
 We first do a differential expression analysis using zingeR posterior probabilities focussing on the count component of the ZINB model. We use edgeR to model the count component.
 
@@ -123,23 +121,30 @@ mean(simDataIslam$indDE %in% which(lrt$table$padjFilter<=0.05)) #TPR
 mean(which(lrt$table$padjFilter<=0.05) %in% simDataIslam$indNonDE) #FDP
 ``` 
 
-### zingeR-DESeq2
+## zingeR-DESeq2
 
 ```{r}
 # do a zero-inflated DESeq2 analysis
 library(DESeq2)
 colData=data.frame(grp=grp)
+design=model.matrix(~grp)
 dse=DESeqDataSetFromMatrix(countData=simDataIslam$counts, colData=colData, design=~grp)
-weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=200, normalization="DESeq2_poscounts", colData=colData, designFormula=~grp)
+weights <- zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=200, normalization="DESeq2_poscounts", colData=colData, designFormula=~grp)
 assays(dse)[["weights"]]=weights
 dse = DESeq2::estimateSizeFactors(dse, type="poscounts")
 dse = estimateDispersions(dse)
 dse = nbinomWaldTest(dse, betaPrior=TRUE)
 res = results(dse)
 # wald test
-sum(res$padj<=0.05, na.rm=TRUE)
-mean(simDataIslam$indDE %in% which(res$padj<=0.05)) #TPR
-mean(which(res$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
+#sum(res$padj<=0.05, na.rm=TRUE)
+#mean(simDataIslam$indDE %in% which(res$padj<=0.05)) #TPR
+#mean(which(res$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
+# t test: in progress. still working on a wrapper function for this.
+baseMean=mcols(dse)$baseMean
+hlp = getTResults(res, weights, baseMean)
+sum(hlp$padj<=0.05, na.rm=TRUE)
+mean(simDataIslam$indDE %in% which(hlp$padj<=0.05)) #TPR
+mean(which(hlp$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
 ```
 
 

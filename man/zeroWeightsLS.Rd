@@ -4,21 +4,21 @@
 \alias{zeroWeightsLS}
 \title{Estimate ZINB count component posterior probabilities}
 \usage{
-zeroWeightsLS(counts, design, maxit = 100, normalization = "TMM", colData,
-  designFormula, normFactors, plot = FALSE, plotW = FALSE, verbose = TRUE,
-  designZI = NULL, llTol = 1e-04)
+zeroWeightsLS(counts, design, maxit = 200, normalization = "TMM", colData,
+  designFormula, normFactors = NULL, plot = FALSE, plotW = FALSE,
+  verbose = TRUE, designZI = NULL, llTol = 1e-04)
 }
 \arguments{
 \item{counts}{A count matrix with feature-wise expression values. Values in this matrix must be integers.}
 
 \item{design}{Design matrix specifying the experimental design.}
 
-\item{maxit}{The number of iterations for the EM-algorithm. 30 by default but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}.}
+\item{maxit}{The number of iterations for the EM-algorithm. 200 by default, but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}. The EM-algorithm will automatically stop if convergence is achieved before the maximum number of iterations.}
 
 \item{normalization}{The normalization method to use. Can be one of \code{"TMM"}, \code{"DESeq2"} or \code{"phyloseq"}. If none of the methods are of interest, global normalization factors can also be given as input in the \code{normFactors} argument.
-If \code{"TMM"}, the trimmed mean of M-values (Robinson & Oshlack, 2010) normalization is used as implemented in \code{edgeR.}.
+If \code{"TMM"}, the trimmed mean of M-values (Robinson & Oshlack, 2010) normalization is used as implemented in \code{edgeR}.
 If \code{"DESeq2"}, the default median-of-ratios method from the \code{DESeq2} package (Love et al., 2014) is used for normalization.
-If \code{"phyloseq"}, an adapted median-of-ratios method as implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013) is used. The adaptation ensures that genes with zero counts can be used for the purpose of normalization.}
+If \code{"DESeq2_poscounts"}, an adapted median-of-ratios method now implemented in \code{DESeq2}. This method was originally first implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013). The adaptation ensures that genes with zero counts can be used for the purpose of normalization.}
 
 \item{colData}{Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The \code{colData} with pheno data for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.}
 
@@ -30,10 +30,10 @@ If \code{"phyloseq"}, an adapted median-of-ratios method as implemented in the \
 
 \item{plotW}{Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?}
 
-\item{designZI}{The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.}
+\item{designZI}{The design for the zero-excess model. If \code{NULL}, the effective library size (defined as the sequencing depth multiplied by the normalization factors) is used by default.}
 }
 \description{
-This function estimates posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.
+Estimate posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.
 }
 \examples{
 data(islamEset,package="zingeR")
