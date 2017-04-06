@@ -288,7 +288,7 @@
 #' @param normalization The normalization method to use. Can be one of \code{"TMM"}, \code{"DESeq2"} or \code{"phyloseq"}. If none of the methods are of interest, global normalization factors can also be given as input in the \code{normFactors} argument.
 #'      If \code{"TMM"}, the trimmed mean of M-values (Robinson & Oshlack, 2010) normalization is used as implemented in \code{edgeR}.
 #'      If \code{"DESeq2"}, the default median-of-ratios method from the \code{DESeq2} package (Love et al., 2014) is used for normalization.
-#'      If \code{"phyloseq"}, an adapted median-of-ratios method as implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013) is used. The adaptation ensures that genes with zero counts can be used for the purpose of normalization.
+#'      If \code{"DESeq2_poscounts"}, an adapted median-of-ratios method now implemented in \code{DESeq2}. This method was originally first implemented in the \code{phyloseq} package (McMurdie & Holmes, 2013). The adaptation ensures that genes with zero counts can be used for the purpose of normalization.
 #' @param normFactors A vector of user-supplied global normalization factors for every sample. The normalization factors should be sorted according to the samples in the count matrix.
 #' @param colData Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The \code{colData} with pheno data for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
 #' @param designFormula Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The design formula required for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
@@ -311,7 +311,7 @@
 #' design=model.matrix(~pData(islamEset)[,1])
 #' zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
 #' @export
-zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colData, designFormula, normFactors, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
+zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colData, designFormula, normFactors=NULL, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
 
     if (!is.integer(counts)) {
       if (any(round(counts) != counts)) {
@@ -321,6 +321,7 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
       mode(counts) <- "integer"
     }
 
+  #### normalization
     require(edgeR)
     if(plot | plotW) par(mfrow=c(1,plot+plotW))
     counts <- DGEList(counts)
@@ -330,24 +331,21 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
       dse = DESeqDataSetFromMatrix(counts$counts, colData=colData, design=designFormula)
       dse = DESeq2::estimateSizeFactors(dse)
       counts$samples$norm.factors = 1/dse$sizeFactor
-    } else if(normalization=="phyloseq"){
-      gm_mean = function(x, na.rm=TRUE){
-        exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
-      }
+    } else if(normalization=="DESeq2_poscounts"){
       dse = DESeqDataSetFromMatrix(counts$counts, colData=colData, design=designFormula)
-      geoMeans = apply(counts(dse), 1, gm_mean)
-      dse = DESeq2::estimateSizeFactors(dse, geoMeans = geoMeans)
+      dse = DESeq2::estimateSizeFactors(dse, type = "poscounts")
       counts$samples$norm.factors = 1/dse$sizeFactor
     }
     # user input normalization factors
     if(!is.null(normFactors)) counts$samples$norm.factors = normFactors
     effLibSize <- counts$samples$lib.size*counts$samples$norm.factors
     logEffLibSize <- log(effLibSize)
+
+    ## initialize EM
     zeroId <- counts$counts==0
     w <- matrix(1,nrow=nrow(counts),ncol=ncol(counts), dimnames=list(c(1:nrow(counts)), NULL))
     ## starting values based on P(zero) in the library
     for(k in 1:ncol(w)) w[counts$counts[,k]==0,k] <- 1-mean(counts$counts[,k]==0)
-
     llOld <- matrix(-1e4,nrow=nrow(counts),ncol=ncol(counts))
     likCOld <- matrix(0,nrow=nrow(counts),ncol=ncol(counts))
     converged=FALSE
@@ -408,8 +406,9 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
 #' @param plot Logical. Should the BCV plot be plotted in every iteration?
 #' @param plotW Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?
 #' @param designZI. The design for the zero-excess model. If \code{NULL}, the effective library size is used by default.
+#' @param ... Other arguments passed on to a weighted version of \code{\link[edgeR]{estimateDisp}}
 #' @seealso
-#' \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}
+#' \code{\link[edgeR]{calcNormFactors}},  \code{\link[edgeR]{DGEList}}, \code{\link[edgeR]{estimateDisp}}
 #' @examples
 #' #' library(edgeR)
 #' data(islamEset,package="zingeR")
@@ -423,12 +422,12 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
 #' @name estimateWeightedDispersions
 #' @rdname estimateWeightedDispersions
 #' @export
-estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, ...){
+estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, normalization="TMM", normFactors=NULL, ...){
   #estimate weights
   #use in .estimateDispWeighted
   #return DGEList for edgeR that can be used as input in weighted glmLRT.
   require(edgeR)
-  weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol)
+  weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol, normalization=normalization, normFactors=normFactors)
   d$weights <- weights
   d <- .estimateDispWeighted(d,design, ...)
   return(d)

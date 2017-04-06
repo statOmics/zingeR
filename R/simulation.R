@@ -52,9 +52,9 @@
 
 #' Estimate feature-wise parameters according to a ZTNB distribution.
 #'
-#' This function fits a zero-truncated negative binomial distribution to the positive counts for each feature (row). Before running this function, a zero-truncated negative binomial distribution family must be created with the \code{gamlss} package as: \code{gamlss.tr::gen.trun(par=0, family="NBI", name="ZeroTruncated", type="left", varying=FALSE)}
+#' This function fits a zero-truncated negative binomial distribution to the positive counts for each feature (row). By default, the zero-truncated negative binomial distribution from the \code{gamlss} package is used for this function.
 #'
-#' @param counts A numeric matrix containing gene expression counts.
+#' @param counts A numeric matrix containing gene expression counts. Note that every gene in this matrix must have at least $p+1$ positive counts, with $p$ the number of columns in the design matrix.
 #' @param design The design of the experiments with rows corresponding to samples and columns corresponding to coefficients.
 #' @param drop.extreme.dispersion Either a numeric value between $0$ and $1$, stating the proportion of genes with extreme (high) dispersions to remove for simulation, or FALSE (default), if no dispersions should be removed for the analysis.
 #' @param offset The offset to use (typically the sequencing depth) when estimating gene-wise means and dispersions in the zero-truncated negative binomial model. These parameters will be used as a basis for the simulation.
