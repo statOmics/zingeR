@@ -93,23 +93,15 @@ points(x=edgeR::aveLogCPM(simDataIslam$counts), y=rowMeans(simDataIslam$counts==
 
 # Analysis
 
-## Estimating observation-level zero-inflation weights
-
-\texttt{zeroWeightsLS} is the core function of \texttt{zingeR} and estimates posterior probabilities that can be used as observation-level weights to allow a zero-inflated negative binomial analysis.
-
-
-```{r}
-# estimating weights and use them with your method of interest
-design=model.matrix(~grp)
-weights=zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=20,plotW=FALSE)
-hist(weights[simDataIslam$counts==0], main="post. prob. on count component for all zeros")
-```
-
 ## Differential expression
 
+### zingeR-edgeR
+
 We first do a differential expression analysis using zingeR posterior probabilities focussing on the count component of the ZINB model. We use edgeR to model the count component.
-The `estimateWeightedDispersions` function internally first estimates zingeR posterior probabilities using the `zeroWeightsLS` function above and then propagates these weights in an adapted version of the edgeR `estimateDisp` function to estimate negative binomial dispersions conditional on the zero-inflation weights.
-Note that in the analysis it is important to be consistent with the normalization procedure to use. The default normalization procedure in the `estimateWeightedDispersions` function is TMM, since this is the default procedure for edgeR. In a next section, we show a zero-inflated NB analysis using DESeq2 where we re-estimate the weights using the proper DESeq2 normalization. The user can also input normalization factors from any normalization procedure of interest by using the `normFactors` argument in `zeroWeightsLS` or `estimateWeightedDispersions`.
+
+The weights are estimated with the core function of zingeR, `zeroWeightsLS`. It is important to be consistent with the normalization procedure, i.e. if you use TMM normalization for the analysis, you should also use it for estimating the zingeR posterior probabilities. In a next section, we show a zero-inflated NB analysis using DESeq2 where we re-estimate the weights using the proper DESeq2 normalization. The user can also input normalization factors from any normalization procedure of interest by using the `normFactors` argument in `zeroWeightsLS`.
+
+The `estimateWeightedDispersions` propagates the zingeR weights in an adapted version of the edgeR `estimateDisp` function to estimate negative binomial dispersions conditional on the zero-inflation weights.
 
 After estimation of the dispersions and zingeR posterior probabilities, the `glmWeightedF` function is used for statistical inference. This is an adapted function from the `glmLRT` function of edgeR. It uses an F-test to perform the test of which the degrees of freedom are by default adjusted according to the downweighting of excess zeros (argument `ZI=TRUE`). Also, independent filtering can be performed on the obtained p-values (argument `independentFiltering=TRUE`). We use the independent filtering strategy that was originally implemented in DESeq2. By default, the average fitted values are used as a filter.
 
@@ -118,19 +110,37 @@ After estimation of the dispersions and zingeR posterior probabilities, the `glm
 library(edgeR)
 d=DGEList(simDataIslam$counts)
 d=suppressWarnings(calcNormFactors(d))
-d=estimateWeightedDispersions(d,design, maxit=200)
+design=model.matrix(~grp)
+weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=200, normalization="TMM")
+d=estimateWeightedDispersions(d, design, weights=weights)
+#d=estimateWeightedDispersions(d,design, maxit=200)
 plotBCV(d)
 fit=glmFit(d,design)
 lrt=glmWeightedF(fit,coef=2, independentFiltering = TRUE)
 hist(lrt$table$PValue)
 sum(lrt$table$padjFilter<=0.05, na.rm=TRUE)
-mean(simDataIslam$indDE%in%which(lrt$table$padjFilter<=0.05)) #TPR
-mean(which(lrt$table$padjFilter<=0.05)%in%simDataIslam$indNonDE) #FDR
+mean(simDataIslam$indDE %in% which(lrt$table$padjFilter<=0.05)) #TPR
+mean(which(lrt$table$padjFilter<=0.05) %in% simDataIslam$indNonDE) #FDP
 ``` 
+
+### zingeR-DESeq2
 
 ```{r}
 # do a zero-inflated DESeq2 analysis
-#weightsDESeq2=zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=20,plotW=FALSE, normalization="DESeq2_poscounts")
-#ask for input from Mike Love. If a new version of DESeq2 will be available with a weights argument we should recycle this, and only adjust the null distribution from Gaussian to t-distribution.
+library(DESeq2)
+colData=data.frame(grp=grp)
+dse=DESeqDataSetFromMatrix(countData=simDataIslam$counts, colData=colData, design=~grp)
+weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=200, normalization="DESeq2_poscounts", colData=colData, designFormula=~grp)
+assays(dse)[["weights"]]=weights
+dse = DESeq2::estimateSizeFactors(dse, type="poscounts")
+dse = estimateDispersions(dse)
+dse = nbinomWaldTest(dse, betaPrior=TRUE)
+res = results(dse)
+# wald test
+sum(res$padj<=0.05, na.rm=TRUE)
+mean(simDataIslam$indDE %in% which(res$padj<=0.05)) #TPR
+mean(which(res$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
 ```
 
+
+Aside from using edgeR or DESeq2 for the negative binomial count component of the zero-inflated negative binomial model, the user can use any method of choice by incorporating the weights as estimated with `zeroWeightsLS`.

@@ -287,6 +287,7 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     }
 
     rownames(counts) <- paste("ids", 1:nTags, sep = "")
+    colnames(counts) <- paste("Sample",1:ncol(counts), sep="")
     object$counts <- counts
     object
   }

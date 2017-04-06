@@ -422,12 +422,12 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
 #' @name estimateWeightedDispersions
 #' @rdname estimateWeightedDispersions
 #' @export
-estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, normalization="TMM", normFactors=NULL, ...){
+estimateWeightedDispersions <- function(d, design, maxit=30, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, normalization="TMM", normFactors=NULL, weights=NULL, ...){
   #estimate weights
   #use in .estimateDispWeighted
   #return DGEList for edgeR that can be used as input in weighted glmLRT.
   require(edgeR)
-  weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol, normalization=normalization, normFactors=normFactors)
+  if(is.null(weights)) weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=maxit, plot=plot, plotW=plotW, designZI=designZI, verbose=verbose, llTol=llTol, normalization=normalization, normFactors=normFactors)
   d$weights <- weights
   d <- .estimateDispWeighted(d,design, ...)
   return(d)
