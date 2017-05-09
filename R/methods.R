@@ -293,6 +293,7 @@
 #' @param colData Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The \code{colData} with pheno data for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
 #' @param designFormula Only applicable if \code{normalization="DESeq2"} or \code{normalization="phyloseq"}. The design formula required for constructing a \code{\link[DESeq2]{DESeqDataSet-class}} object.
 #' @param maxit The number of iterations for the EM-algorithm. 200 by default, but larger may be useful for large datasets (many samples). Convergence of the posterior probabilities can be checked by following the distribution of posterior probabilities over iterations with \code{plotW}. The EM-algorithm will automatically stop if convergence is achieved before the maximum number of iterations.
+#' @param llOffset Offset added to likelihood to avoid taking the log of 0. Defaults to $1e-6$.
 #' @param plot Logical. Should the BCV plot be plotted in every iteration?
 #' @param plotW Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?
 #' @name zeroWeightsLS
@@ -311,7 +312,7 @@
 #' design=model.matrix(~pData(islamEset)[,1])
 #' zeroWeights=zeroWeightsLS(counts=islam, design=design, maxit=200)
 #' @export
-zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colData, designFormula, normFactors=NULL, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4){
+zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colData, designFormula, normFactors=NULL, plot=FALSE, plotW=FALSE, verbose=TRUE, designZI=NULL, llTol=1e-4, llOffset=1e-6){
 
     if (!is.integer(counts)) {
       if (any(round(counts) != counts)) {
@@ -359,8 +360,10 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
       ### M-step counts
       #only estimate dispersions after weight convergence
       if(i==1 | converged){
-        counts <- estimateGLMCommonDisp(counts, design, interval=c(0,10))
-        counts <- estimateGLMTagwiseDisp(counts, design, prior.df=0, min.row.sum=1)
+        #estimateDisp faster starting from edgeR v3.19
+        #counts <- estimateGLMCommonDisp(counts, design, interval=c(0,10))
+        #counts <- estimateGLMTagwiseDisp(counts, design, prior.df=0, min.row.sum=1)
+        counts <- estimateDisp(counts, design, prior.df=0, min.row.sum=1)
       }
       if(plot) plotBCV(counts)
       fit <- glmFit(counts, design)
@@ -380,7 +383,7 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
 
       ## data log-likelihood
       if(i>1) llOld=ll
-      ll <- log(pi0HatMat*zeroId + (1-pi0HatMat)*likC)
+      ll <- log(pi0HatMat*zeroId + (1-pi0HatMat)*likC + llOffset)
 
       delta <- (rowSums(ll)-rowSums(llOld))/(rowSums(llOld)+llTol)
       if(mean(abs(delta) < llTol)>.999){ #if 99.9% has converged

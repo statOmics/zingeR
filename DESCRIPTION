@@ -1,10 +1,10 @@
 Package: zingeR
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Zero-Inflated Negative binomial Gene Expression in R
 Version: 0.1.0
-Author: Who wrote it
-Maintainer: Who to complain to <yourfault@somewhere.net>
-Description: More about what it does (maybe more than one line)
+Author: Koen Van den Berge
+Maintainer: Koen Van den Berge <koen.vandenberge@ugent.be>
+Description: The zingeR package unlocks RNA-seq tools for zero-inflation applications by estimating posterior probabilities that a zero belongs to the count component. These observation-level probabilities can be used as weights in RNA-seq pipelines.
 License: What license is it under?
 LazyData: TRUE
 Suggests:
@@ -17,4 +17,6 @@ Imports: gamlss,
     mgcv,
     MASS,
     edgeR,
-    limma
+    limma,
+    DESeq2 (>= 1.15.39)
+Depends: edgeR
