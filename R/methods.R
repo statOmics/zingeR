@@ -393,6 +393,10 @@ zeroWeightsLS <- function(counts, design, maxit=200, normalization="TMM", colDat
         converged=TRUE} else {converged=FALSE}
       if(verbose) cat(paste0("iteration: ",i,". mean conv.: ",round(mean(abs(delta) < llTol),5),"\n"))
       if(plotW) hist(w[zeroId],main=paste0("iteration: ",i,". mean conv.: ",mean(abs(delta) < llTol)))
+
+      ## if maximum iterations reached but convergence low, keep on iterating
+      if(i==maxit & mean(abs(delta) < llTol)<0.9) maxit=maxit+1
+
     }
     return(w)
   }

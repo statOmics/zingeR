@@ -6,7 +6,7 @@
 \usage{
 zeroWeightsLS(counts, design, maxit = 200, normalization = "TMM", colData,
   designFormula, normFactors = NULL, plot = FALSE, plotW = FALSE,
-  verbose = TRUE, designZI = NULL, llTol = 1e-04)
+  verbose = TRUE, designZI = NULL, llTol = 1e-04, llOffset = 1e-06)
 }
 \arguments{
 \item{counts}{A count matrix with feature-wise expression values. Values in this matrix must be integers.}
@@ -31,6 +31,8 @@ If \code{"DESeq2_poscounts"}, an adapted median-of-ratios method now implemented
 \item{plotW}{Logical. Should the distribution of posterior probabilities for all zeros in the count matrix be plotted in every iteration?}
 
 \item{designZI}{The design for the zero-excess model. If \code{NULL}, the effective library size (defined as the sequencing depth multiplied by the normalization factors) is used by default.}
+
+\item{llOffset}{Offset added to likelihood to avoid taking the log of 0. Defaults to $1e-6$.}
 }
 \description{
 Estimate posterior probabilities to belong to the count component according to a zero-inflated negative binomial (ZINB) model. Internally, edgeR is used for the estimation of the NB component.

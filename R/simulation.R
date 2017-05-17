@@ -147,7 +147,7 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offse
   dataset.propZeroGene <- propZeroGene
   dataset.lib.size <- d$samples$lib.size
   dataset.nTags <- nrow(d)
-  list(dataset.AveLogCPM = dataset.AveLogCPM, dataset.dispersion = dataset.dispersion, dataset.lib.size = dataset.lib.size, dataset.nTags = dataset.nTags, dataset.propZeroFit=zeroFit, dataset.lambda=lambda, dataset.propZeroGene=propZeroGene, dataset.breaks = breaks, dataset.cpm=cpm)
+  list(dataset.AveLogCPM = dataset.AveLogCPM, dataset.dispersion = dataset.dispersion, dataset.lib.size = dataset.lib.size, dataset.nTags = dataset.nTags, dataset.propZeroFit=zeroFit, dataset.lambda=lambda, dataset.propZeroGene=propZeroGene, dataset.breaks = breaks)
 }
 
 #' Simulate a scRNA-seq experiment
@@ -184,7 +184,7 @@ getDatasetZTNB = function(counts, design, drop.extreme.dispersion = FALSE, offse
 #' libSizes=sample(colSums(islam),nSamples,replace=TRUE) #library sizes
 #' simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islam, nTags=nTags, group=grp, verbose=TRUE, params=params, lib.size=libSizes)
 #' @export
-NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group), lib.size = NULL, drop.extreme.dispersion = FALSE, pUp=.5, foldDiff=3, verbose=TRUE, ind=NULL, params=NULL, randomZero=0, max.dispersion=400, min.dispersion=0.1)
+NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group), lib.size = NULL, drop.extreme.dispersion = FALSE, pUp=.5, foldDiff=3, verbose=TRUE, ind=NULL, params=NULL, randomZero=0, max.dispersion=400, min.dispersion=0.01)
 {
   require(edgeR)
   group = as.factor(group)
@@ -255,11 +255,12 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     libPredict=rep(log(lib.size),each=length(avLogCpm))
     cpmPredict=rep(avLogCpm,length(lib.size))
     ## no noise
-      zeroProbMatLink = matrix(predict(zeroFit, newdata=data.frame(logLibHlp=libPredict, midsHlp=cpmPredict), type="link"), byrow=FALSE, ncol=nlibs)
-      meanDiff = rowMeans(zeroProbMatLink)-logit(propZeroGene)
-      zeroProbMat = expit(sweep(zeroProbMatLink,1,meanDiff,"-"))
+    zeroProbMatLink = matrix(predict(zeroFit, newdata=data.frame(logLibHlp=libPredict, midsHlp=cpmPredict), type="link"), byrow=FALSE, ncol=nlibs)
+    ## shift to empirical mean
+    meanDiff = rowMeans(zeroProbMatLink)-logit(propZeroGene)
+    zeroProbMat = expit(sweep(zeroProbMatLink,1,meanDiff,"-"))
 
-    ## introduce random zeroes for lower count genes
+    ## offset probabilities of 1
     zeroProbMat[sample(1:length(zeroProbMat), floor(randomZero*length(zeroProbMat)))]=1-1e-5
 
     ## adjust mu for adding zeroes
@@ -269,21 +270,34 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     mu=mu+adjustment
 
     ## simulate counts acc to a zero-adjusted NB model
-    counts = rZANBI(n=nTags*nlibs, mu=mu, sigma=Dispersion, nu=zeroProbMat)
+    counts = rZANBI(n=nTags*nlibs, mu=mu, sigma=1/Dispersion, nu=zeroProbMat)
 
     ## the rZANBI function rarely simulates Inf values for very low mu estimates. Resimulate for these genes using same params, if present
     ## also, resample features with all zero counts
+    ## also, resample very high integers
     zeroCountsId <- which(rowSums(counts)==0)
     infId <- which(apply(counts,1,function(row) any(is.infinite(row))))
+    #highIntegerThreshold <- max(params$dataset.lambda*max(lib.size))*1.25
+    #highIntegerID <- which(apply(counts,1,function(row) any(row > highIntegerThreshold)))
+    #while(length(zeroCountsId)>0 | length(infId)>0 | length(highIntegerID)>0){
     while(length(zeroCountsId)>0 | length(infId)>0){
-      if(length(zeroCountsId)>0){ #resimulate
+
+      #message(paste0("Replacing ",length(zeroCountsId)," all-zero genes ",length(infID)," genes with Inf and ",length(highIntegerID)," high integer genes \n"))
+      if(length(zeroCountsId)>0){
+        #resimulate all zero counts
         counts[zeroCountsId,] = rZANBI(n=length(zeroCountsId)*nlibs, mu=mu[zeroCountsId,], sigma=Dispersion[zeroCountsId,], nu=zeroProbMat[zeroCountsId,])
       }
-      if(length(infId)>0){ #replace Inf values by resampling
+      if(length(infId)>0){
+        #replace Inf values by resampling
         counts[infId,] <- rZANBI(n=length(infId)*nlibs, mu=mu[infId,], sigma=Dispersion[infId,], nu=zeroProbMat[infId,])
       }
+      # if(length(highIntegerID)>0){
+      #   #replace very high integers
+      #   counts[highIntegerID,] <- rZANBI(n=length(highIntegerID)*nlibs, mu=mu[highIntegerID,], sigma=Dispersion[highIntegerID,], nu=zeroProbMat[highIntegerID,])
+      # }
       zeroCountsId <- which(rowSums(counts)==0)
       infId <- which(apply(counts,1,function(row) any(is.infinite(row))))
+      #highIntegerID <- which(apply(counts,1,function(row) any(row > highIntegerThreshold)))
     }
 
     rownames(counts) <- paste("ids", 1:nTags, sep = "")
@@ -292,10 +306,11 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     object
   }
 
-  if(verbose) message("Preparing dataset.\n")
   if(is.null(params)){
+    if(verbose) message("Preparing dataset.\n")
     dataset <- getDatasetZTNB(counts = dataset, drop.extreme.dispersion = drop.extreme.dispersion)
   } else {
+    if(verbose) message("Preparing dataset. Using existing parameters.\n")
     dataset <- params
   }
   dat <- new("DGEList", list(dataset = dataset, nTags = nTags, lib.size = lib.size, nlibs = nlibs, group = group, design = model.matrix(~group), pUp = pUp, foldDiff = foldDiff))

@@ -7,7 +7,7 @@
 NBsimSingleCell(dataset, group, nTags = 10000, nlibs = length(group),
   lib.size = NULL, drop.extreme.dispersion = FALSE, pUp = 0.5,
   foldDiff = 3, verbose = TRUE, ind = NULL, params = NULL,
-  randomZero = 0, max.dispersion = 400, min.dispersion = 0.1)
+  randomZero = 0, max.dispersion = 400, min.dispersion = 0.01)
 }
 \arguments{
 \item{dataset}{An expression matrix representing the dataset on which the simulation is based.}
