@@ -16,7 +16,7 @@ Imports: gamlss,
     gamlss.tr,
     mgcv,
     MASS,
-    edgeR,
+    edgeR (>= 3.19),
     limma,
     DESeq2 (>= 1.15.39)
 Depends: edgeR

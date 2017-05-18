@@ -46,7 +46,8 @@
   #lambda=exp(fit$mu.coefficients)
   lambda=mean(countsModel/libSizeModel)
   #lambda=exp(mean(fit$mu.coefficients)) #geometric mean
-  dispersion=exp(fit$sigma.coefficients)
+  theta=exp(fit$sigma.coefficients)
+  dispersion=1/theta
   return(c(dispersion=dispersion,lambda=lambda))
 }
 
@@ -270,7 +271,7 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     mu=mu+adjustment
 
     ## simulate counts acc to a zero-adjusted NB model
-    counts = rZANBI(n=nTags*nlibs, mu=mu, sigma=1/Dispersion, nu=zeroProbMat)
+    counts = rZANBI(n=nTags*nlibs, mu=mu, sigma=Dispersion, nu=zeroProbMat)
 
     ## the rZANBI function rarely simulates Inf values for very low mu estimates. Resimulate for these genes using same params, if present
     ## also, resample features with all zero counts
