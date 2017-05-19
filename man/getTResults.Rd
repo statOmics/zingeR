@@ -4,7 +4,7 @@
 \alias{getTResults}
 \title{Preliminary function for t-test using DESeq2.}
 \usage{
-getTResults(res, weights, filter)
+getTResults(res, weights, filter, p)
 }
 \arguments{
 \item{res}{The DESeq2 object obtained from \code{results}.}
@@ -12,6 +12,8 @@ getTResults(res, weights, filter)
 \item{weights}{The zingeR weights}
 
 \item{filter}{The variable to filter on.}
+
+\item{p}{The number of GLM coefficients in the DESeq2 model. Used for adjusting the degrees of freedom for the t-distribution.}
 }
 \description{
 This function uses the test statistics in the standard DESeq2 object obtained from the \code{results} function to perform a t-test with degrees of freedom adjusted to zero-inflation downweighting.
