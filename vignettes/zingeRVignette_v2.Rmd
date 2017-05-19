@@ -14,8 +14,7 @@ vignette: >
 
 # Simulating scRNA-seq data
 
-The \texttt{zingeR} package provides a framework to simulate scRNA-seq data. The user can input a real scRNA-seq dataset to extract feature-level parameters for generating scRNA-seq expression counts. The `getDatasetZTNB` function will estimate empirical mean expression proportions $\bar{\lambda}_g = \frac{1}{n} \sum_{i=1}^n \frac{y_{gi}}{N_i}$, with $n$ the number of samples, $y_{gi}$ the expression count for gene $g$ in sample $i$ and $N_i$ the library size (sequencing depth) of sample $i$. The function also estimates dispersions $\phi_g$ based on the zero-truncated negative binomial (ZTNB) distribution.  Additionally, the function derives empirical probabilities on zero counts $p_{gi}$. Aside from these feature-specific parameters, `getDatasetZTNB` also estimates the global association of $p_{gi}$ with (a smooth function of) the average log CPM $A_g$ of a gene and the library size $N_i$.
-In order to do estimate the dispersions, we first define the ZTNB distribution using the `gen.trun` function from the `gamlss.tr` package [@Rigby2005].
+The \texttt{zingeR} package provides a framework to simulate scRNA-seq data. The user can input a real scRNA-seq dataset to extract feature-level parameters for generating scRNA-seq expression counts. The `getDatasetZTNB` function will estimate empirical mean expression proportions for the positive counts $\hat \lambda_g = \frac{1}{|\{ y_{gi} > 0\}|} \sum_{i \in \{ y_{gi} > 0\}} y_{gi}/N_i$, with $|x|$ denoting the cardinality of the set $x$, $y_{gi}$ the  expression count for gene $g$ in sample $i$ and $N_i$ the library size (sequencing depth) of sample $i$. The function also estimates dispersions $\phi_g$ based on the zero-truncated negative binomial (ZTNB) distribution.  Additionally, the function derives empirical probabilities on zero counts $p_{gi}$. Aside from these feature-specific parameters, `getDatasetZTNB` also estimates the global association of $p_{gi}$ with (a smooth function of) the average log CPM $A_g$ of a gene and the library size $N_i$.
 
 ```{r}
 suppressPackageStartupMessages({
@@ -31,26 +30,25 @@ cellType=pData(islamEset)[,"cellType"]
 paramsIslam=getDatasetZTNB(counts=islamHlp,design=model.matrix(~cellType))
 ```
 
-Next we use the parameters to simulate the expression counts. Library sizes for the simulated samples are by default resampled from the input dataset but they can also be specified.
-The simulation framework models positive and zero counts separately using a hurdle model.
-The zero abundance $p_{gi}$ of a gene $g$ is modelled as a function of its expression intensity (in terms of average log counts per million $A_g$) and the sequencing depth of the sample $i$ using a semiparametric additive logistic regression model.
-Te positive counts are modelled with a zero-truncated negative binomial (ZTNB) distribution with mean $\mu_{gi} = \lambda_{gi} N_i$ and dispersion parameter $\phi_g$.
+Next we use the parameters to simulate the expression counts. Library sizes for the simulated samples are by default resampled from the input dataset but they can also be specified by the user.
+The simulation framework models positive and zero counts separately similar to a hurdle model.
+The zero probability $p_{gi}$ of a gene $g$ is modelled as a function of its expression intensity (in terms of average log counts per million $A_g$) and the sequencing depth $N_i$ of the sample $i$ using a semiparametric additive logistic regression model.
 The simulation paradigm jointly samples the gene-wise estimated parameters $\{\hat \lambda_{gi}, \hat \phi_g, A_g, p_{gi}\}$ to retain gene specific characteristics present in the original dataset.
 Positive counts are then simulated according to a ZTNB distribution with mean $\hat \mu_{gi} = \hat \lambda_{gi} N_i$ and dispersion $\hat \phi_g$.
 We use the expected probability on zero counts $p_g = \frac{\sum_{i=1}^n p_{gi}}{n}$ to introduce zero counts by simulating from a binomial process. 
 The simulation thus acknowledges both gene-specific characteristics as well as broad associations across all genes and provides realistic scRNA-seq data.
 
-One can use the `NBsimSingleCell` function to simulate a scRNA-seq experiment. The simulation settings can be adaptoed by changing the arguments of the function:
+This is implemented in the `NBsimSingleCell` function. The simulation settings can be specified with the arguments of the function:
 
- - `dataset` : an expression matrix representing the dataset on which the simulation is based.
+ - `dataset` : an expression matrix of counts representing the dataset on which the simulation is based.
  - `group` : group indicator specifying the attribution of the samples to the different conditions of interest that are being simulated.
  - `nTags` : the number of features (genes) to simulate. $1000$ by default
  - `nlibs` : the number of samples to simulate. Defaults to `length(group)`.
  - `lib.size` : the library sizes for the simulated samples. If `NULL` (default), library sizes are resampled from the original datset.
  - `pUp` : numeric value between $0$ and $1$ ($0.5$ by default) specifying the proportion of differentially expressed genes that show an upregulation in the second condition.
- - `foldDiff` : the fold changes used in simulating the differentially expressed genes. Either one numeric value for specifying the same fold change for all DE genes, or a vector of the same length as `ind` to specify fold changes for all differentially expressed genes. Note that only fold changes strictly higher than $1$ should be used as input from which a fraction (defined by `pUp`) will be inversed to simulatie downregulation in the second condition. Defaults to $3$.
- - `verbose` : logical, stating whether progress should be printed.
- - `ind` : integer vector specifying the rows of the count matrix that contain differential features.
+ - `foldDiff` : the fold changes used in simulating the differentially expressed genes. Either one numeric value for specifying the same fold change for all DE genes, or a vector of the same length as `ind` to specify fold changes for all differentially expressed genes. Note that only fold changes strictly higher than $1$ should be used as input from which a fraction (defined by `pUp`) will be inversed to simulate downregulation in the second condition. Defaults to $3$.
+ - `verbose` : logical. Should progress be printed?
+ - `ind` : integer vector specifying the rows of the simulated count matrix that contain differential features.
  - `params` : An object containing feature-wise parameters used for simulation, typically the output from `getDatasetZTNB`. If `NULL`, parameters are estimated from the dataset provided.
  - `randomZero` : A numeric value between $0$ and $1$ specifying the random fraction of expression counts that are set to zero after simulating the expression count matrix. Defaults to $0$.
  - `min.dispersion` : The minimum dispersion value to use for simulation. $0.1$ by default.
@@ -69,7 +67,7 @@ simDataIslam <- NBsimSingleCell(foldDiff=fcSim, ind=DEind, dataset=islamHlp, nTa
 simDataIslam$counts[1:5,1:5]
 #head(simDataIslam$counts)
 
-#show comparable BCV
+# BCV plots
 dOrig=suppressWarnings(edgeR::calcNormFactors(DGEList(islamHlp)))
 dOrig=estimateGLMTagwiseDisp(estimateGLMCommonDisp(dOrig, design=model.matrix(~cellType), interval=c(0,10)),prior.df=0)
 
@@ -95,23 +93,23 @@ points(x=edgeR::aveLogCPM(simDataIslam$counts), y=rowMeans(simDataIslam$counts==
 
 ## zingeR-edgeR
 
-We first do a differential expression analysis using zingeR posterior probabilities focussing on the count component of the ZINB model. We use edgeR to model the count component.
+We first perform a differential expression analysis using zingeR posterior probabilities and focussing on the count component of the ZINB model. We use edgeR to model the count component.
 
-The weights are estimated with the core function of zingeR, `zeroWeightsLS`. It is important to be consistent with the normalization procedure, i.e. if you use TMM normalization for the analysis, you should also use it for estimating the zingeR posterior probabilities. In a next section, we show a zero-inflated NB analysis using DESeq2 where we re-estimate the weights using the proper DESeq2 normalization. The user can also input normalization factors from any normalization procedure of interest by using the `normFactors` argument in `zeroWeightsLS`.
+The weights are estimated with the core function of zingeR, `zeroWeightsLS`. It is important to be consistent with the normalization procedure, i.e. if you use TMM normalization for the analysis, you should also use it for estimating the zingeR posterior probabilities. In a next section, we demonstrate a zero-inflated NB analysis using DESeq2 where we re-estimate the weights using the proper DESeq2 normalization. The user can also input normalization factors from any normalization procedure of interest by using the `normFactors` argument in `zeroWeightsLS`.
 
-The `estimateWeightedDispersions` propagates the zingeR weights in an adapted version of the edgeR `estimateDisp` function to estimate negative binomial dispersions conditional on the zero-inflation weights.
+The weights can then be provided in the DGEList object which will be used for dispersion estimation in the native edgeR `estimateDisp` function.
 
-After estimation of the dispersions and zingeR posterior probabilities, the `glmWeightedF` function is used for statistical inference. This is an adapted function from the `glmLRT` function of edgeR. It uses an F-test to perform the test of which the degrees of freedom are by default adjusted according to the downweighting of excess zeros (argument `ZI=TRUE`). Also, independent filtering can be performed on the obtained p-values (argument `independentFiltering=TRUE`). We use the independent filtering strategy that was originally implemented in DESeq2. By default, the average fitted values are used as a filter.
+After estimation of the dispersions and zingeR posterior probabilities, the `glmWeightedF` function is used for statistical inference. This is an adapted function from the `glmLRT` function of edgeR. It uses an F-test for which the denominator degrees of freedom are by default adjusted according to the downweighting of excess zeros (argument `ZI=TRUE`). Also, independent filtering can be performed on the obtained p-values (argument `independentFiltering=TRUE`). We use the independent filtering strategy that was originally implemented in DESeq2. By default, the average fitted values are used as a filter criterion.
 
 ```{r}
-# do a zero-inflated edgeR analysis
+# zingeR_edgeR analysis
 library(edgeR)
 d=DGEList(simDataIslam$counts)
 d=suppressWarnings(calcNormFactors(d))
 design=model.matrix(~grp)
 weights <- zeroWeightsLS(counts=d$counts, design=design, maxit=200, normalization="TMM")
-d=estimateWeightedDispersions(d, design, weights=weights)
-#d=estimateWeightedDispersions(d,design, maxit=200)
+d$weights <- weights
+d=estimateDisp(d, design)
 plotBCV(d)
 fit=glmFit(d,design)
 lrt=glmWeightedF(fit,coef=2, independentFiltering = TRUE)
@@ -123,8 +121,12 @@ mean(which(lrt$table$padjFilter<=0.05) %in% simDataIslam$indNonDE) #FDP
 
 ## zingeR-DESeq2
 
+For the zingeR\_DESeq2 analysis we re-estimate the weights using the positive counts normalization recently implemented in DESeq2 and first developed as part of the `phyloseq` Bioconductor package. The weights should then be provided to the DESeq object using the `assays` accessor function, after which a conventional DESeq2 analysis follows. Note that we allow for default shrinkage of the fold changes by specifying `betaPrior=TRUE`.
+
+
+
 ```{r}
-# do a zero-inflated DESeq2 analysis
+# zingeR_DESeq2 analysis
 library(DESeq2)
 colData=data.frame(grp=grp)
 design=model.matrix(~grp)
@@ -135,17 +137,13 @@ dse = DESeq2::estimateSizeFactors(dse, type="poscounts")
 dse = estimateDispersions(dse)
 dse = nbinomWaldTest(dse, betaPrior=TRUE)
 res = results(dse)
-# wald test
-#sum(res$padj<=0.05, na.rm=TRUE)
-#mean(simDataIslam$indDE %in% which(res$padj<=0.05)) #TPR
-#mean(which(res$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
 # t test: in progress. still working on a wrapper function for this.
 baseMean=mcols(dse)$baseMean
-hlp = getTResults(res, weights, baseMean)
+hlp = getTResults(res, weights, baseMean, p=2)
+hist(hlp$pval)
 sum(hlp$padj<=0.05, na.rm=TRUE)
 mean(simDataIslam$indDE %in% which(hlp$padj<=0.05)) #TPR
 mean(which(hlp$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
 ```
-
 
 Aside from using edgeR or DESeq2 for the negative binomial count component of the zero-inflated negative binomial model, the user can use any method of choice by incorporating the weights as estimated with `zeroWeightsLS`.
