@@ -137,7 +137,7 @@ dse = DESeq2::estimateSizeFactors(dse, type="poscounts")
 dse = estimateDispersions(dse)
 dse = nbinomWaldTest(dse, betaPrior=TRUE)
 res = results(dse)
-# t test: in progress. still working on a wrapper function for this.
+# t test: will be updated to a more convenient wrapper function soon.
 baseMean=mcols(dse)$baseMean
 hlp = getTResults(res, weights, baseMean, p=2)
 hist(hlp$pval)
