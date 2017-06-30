@@ -1,6 +1,6 @@
 zingeR: Zero-Inflated Negative binomial Gene Expression in R.
 
-For installation, please make sure you have recent versions of edgeR (v >= 3.19) and DESeq2 (v >= 1.15.39) installed along with their required dependencies. You should be able to install zingeR and its dependencies through:
+For installation, please make sure you have recent versions of edgeR (v >= 3.19) and DESeq2 (v >= 1.17.6) installed along with their required dependencies. You should be able to install zingeR and its dependencies through:
 
 ```R
 source("https://bioconductor.org/biocLite.R")

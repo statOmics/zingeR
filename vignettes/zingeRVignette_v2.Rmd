@@ -121,7 +121,7 @@ mean(which(lrt$table$padjFilter<=0.05) %in% simDataIslam$indNonDE) #FDP
 
 ## zingeR-DESeq2
 
-For the zingeR\_DESeq2 analysis we re-estimate the weights using the positive counts normalization recently implemented in DESeq2 and first developed as part of the `phyloseq` Bioconductor package. The weights should then be provided to the DESeq object using the `assays` accessor function, after which a conventional DESeq2 analysis follows. Note that we allow for default shrinkage of the fold changes by specifying `betaPrior=TRUE`.
+For the zingeR\_DESeq2 analysis we re-estimate the weights using the positive counts normalization recently implemented in DESeq2 and first developed as part of the `phyloseq` Bioconductor package. The weights should then be provided to the DESeq object using the `assays` accessor function, after which a conventional DESeq2 analysis follows. Note that we allow for default shrinkage of the fold changes by specifying `betaPrior=TRUE`. We adjust for downweighting of excess zeros by using the t-distribution as the null distribution (argument `useT=TRUE`) with degrees of freedom for gene $g$, $df_g = (\sum_{i=1}^n w_{gi}) - p$, with $w_{gi}$ the weights for gene $g$ in sample $i$ and $p$ the number of coefficients, i.e. the number of columns of the design matrix. The adjusted degrees of freedom are specified with the `df` argument in `nbinomWaldTest` DESeq2 function.
 
 
 
@@ -135,15 +135,11 @@ weights <- zeroWeightsLS(counts=simDataIslam$counts, design=design, maxit=200, n
 assays(dse)[["weights"]]=weights
 dse = DESeq2::estimateSizeFactors(dse, type="poscounts")
 dse = estimateDispersions(dse)
-dse = nbinomWaldTest(dse, betaPrior=TRUE)
+dse = nbinomWaldTest(dse, betaPrior=TRUE, useT=TRUE, df=rowSums(weights)-2)
 res = results(dse)
-# t test: will be updated to a more convenient wrapper function soon.
-baseMean=mcols(dse)$baseMean
-hlp = getTResults(res, weights, baseMean, p=2)
-hist(hlp$pval)
-sum(hlp$padj<=0.05, na.rm=TRUE)
-mean(simDataIslam$indDE %in% which(hlp$padj<=0.05)) #TPR
-mean(which(hlp$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
+sum(res$padj<=0.05, na.rm=TRUE)
+mean(simDataIslam$indDE %in% which(res$padj<=0.05)) #TPR
+mean(which(res$padj<=0.05) %in% simDataIslam$indNonDE) #FDP
 ```
 
 Aside from using edgeR or DESeq2 for the negative binomial count component of the zero-inflated negative binomial model, the user can use any method of choice by incorporating the weights as estimated with `zeroWeightsLS`.
