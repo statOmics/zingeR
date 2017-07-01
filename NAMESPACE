@@ -2,7 +2,6 @@
 
 export(NBsimSingleCell)
 export(getDatasetZTNB)
-export(getTResults)
 export(glmWeightedF)
 export(independentFiltering)
 export(zeroWeightsLS)
