@@ -43,11 +43,9 @@
   fit=suppressWarnings(try(gamlss(formula=countsModel~-1+designFit+offset(log(libSizeModel)), family=ztnbFun$NBIZeroTruncated, control=gamlss.control(trace=FALSE, n.cyc=300)),silent=TRUE))
 
   if(class(fit)[1]=="try-error") return(c(dispersion=NA, lambda=NA))
-  #lambda=exp(fit$mu.coefficients)
   lambda=mean(countsModel/libSizeModel)
   #lambda=exp(mean(fit$mu.coefficients)) #geometric mean
-  theta=exp(fit$sigma.coefficients)
-  dispersion=1/theta
+  dispersion=exp(fit$sigma.coefficients)
   return(c(dispersion=dispersion,lambda=lambda))
 }
 
