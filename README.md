@@ -7,10 +7,12 @@ source("https://bioconductor.org/biocLite.R")
 install.packages("Formula")
 biocLite("DESeq2") #install DESeq2 dependencies
 library(devtools)
-install_github("Bioconductor-mirror/DESeq2") #install most recent DESeq2 version
+devtools::install_git("https://git.bioconductor.org/packages/DESeq2”) #install most recent DESeq2 version
 biocLite("edgeR") #install edgeR dependencies
-install_github("Bioconductor-mirror/edgeR") #install most recent edgeR version
+devtools::install_git("https://git.bioconductor.org/packages/edgeR") #install most recent edgeR version
 install_github("statOmics/zingeR")
+
+
 ```
 
 For bug reports, issues or requested extensions, please raise an issue on the GitHub or send an e-mail to koen.vandenberge@ugent.be.
