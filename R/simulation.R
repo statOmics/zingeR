@@ -269,7 +269,7 @@ NBsimSingleCell <- function(dataset, group, nTags = 10000, nlibs = length(group)
     mu=mu+adjustment
 
     ## simulate counts acc to a zero-adjusted NB model
-    counts = rZANBI(n=nTags*nlibs, mu=mu, sigma=Dispersion, nu=zeroProbMat)
+    counts = matrix(rZANBI(n=nTags*nlibs, mu=mu, sigma=Dispersion, nu=zeroProbMat), nrow=nTags, ncol=nlibs)
 
     ## the rZANBI function rarely simulates Inf values for very low mu estimates. Resimulate for these genes using same params, if present
     ## also, resample features with all zero counts
